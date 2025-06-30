@@ -180,7 +180,7 @@ $l$ is the sequence number of the transformer decoder.
 The output of the last layer is $\mathbi{H}_o \in \mathbb{R}^{K \times d_m}$ ($K$ is the number of generated representations).
 
 Here, as described above, we set the number of event queries to a fixed number of $K$ without depending on the event counter.
-The event counter is likely to output the average number regardless of the content based on the statistics of the entire dataset (Section \ref{sec:experiments}).
+The event counter is likely to output the average number regardless of the content based on the statistics of the entire dataset.
 We control the number of events by generating events for fixed $K$ event queries (i.e., the maximum number of events that PPVC can generate.) and removing unnecessary ones.
 
 \textbf{Choice of $K$.}
@@ -432,8 +432,6 @@ Intuitively, it tends to ignore grammar and word order and concentrate more on e
 METEOR (Metric for Evaluation of Translation with Explicit ORdering), on the other hand, evaluates a candidate sentence using a penalty function for inconsistencies and weighted F-score (i.e., both recall and precision).
 It takes into account the portion of the generated sentence where the n-grams match those of the reference sentences.
 We contend, based on these facts, that PPVC has advantages in terms of sentence completeness using common words and drawbacks in generating event-specific words.
-The limitations of PPVC and future work are discussed in detail in Section \ref{sec:conclusion}.
-
 
 \begin{table}[t]
   \centering
@@ -586,3 +584,55 @@ Unfortunately, there are some ill-defined sentences in the black and pink senten
 PPVC generates the same sentence for two different events.
 However, generating repeated sequences is one of the common challenges of language models.
 We leave reducing this by contributing to sentence generation as our future work.
+
+\section{Advantages and Limitations}
+\label{sec:advantages_limitations}
+
+The Parallel Pathway Dense Video Captioning (PPVC) framework introduces significant architectural innovations that address fundamental limitations of sequential processing paradigms while introducing new challenges inherent to parallel transformer-based architectures. This section provides a comprehensive analysis of the advantages and limitations of our proposed approach.
+
+\subsection{Advantages}
+
+\textbf{Elimination of Error Propagation.}
+The most significant advantage of PPVC lies in its ability to eliminate the error propagation problem that plagues sequential dense video captioning methods~\cite{Krishna2017-pw,Li2018-ll,Wang2018-ap}.
+By performing event localization and caption generation simultaneously rather than sequentially, PPVC prevents localization errors from cascading to the captioning module.
+This architectural design ensures that both subtasks have access to the same rich visual representations, enabling more robust and accurate dense video captioning performance as demonstrated in our experimental results.
+
+\textbf{Bottleneck-Free Information Flow.}
+Traditional parallel approaches suffer from information bottlenecks at branching points where encoded features must serve both localization and captioning decoders~\cite{Wang2021-zi}. PPVC addresses this limitation through its representation organizer module, which extracts comprehensive potential information before branching and filters unnecessary elements just before decoding. This design ensures that both pathways receive rich, contextually relevant features without artificial constraints imposed by limited intermediate representations.
+
+\textbf{Enhanced Feature Utilization through Multi-Stack Cross-Attention.}
+The multi-stack cross-attention mechanism represents a key innovation that enables simultaneous access to both organized high-level features and raw low-level visual information~\cite{Vaswani2017-sc}. This dual-pathway feature utilization addresses the limitation that individual attention heads may focus on different aspects of the input, allowing the model to leverage complementary information sources for improved localization and captioning accuracy. The parallel processing of multi-head attention mechanisms provides computational efficiency while maintaining the model's ability to capture complex temporal relationships~\cite{Dosovitskiy2021-vn}.
+
+\textbf{Content-Aware Event Detection.}
+Unlike conventional approaches that rely on hand-crafted algorithms such as Non-Maximum Suppression (NMS)~\cite{hosang2017learning}, PPVC employs a gating network that makes content-aware decisions about event relevance. This eliminates the risk of removing semantically important but temporally overlapping events, which is particularly crucial for complex video scenarios where multiple concurrent activities occur. Our results demonstrate that PPVC generates significantly more events per video (5.54 vs. 3.03 for PDVC), enabling richer and more detailed video descriptions.
+
+\textbf{End-to-End Optimization.}
+The parallel architecture enables true end-to-end optimization without the complex multi-stage training procedures required by sequential methods~\cite{Zhou2018-zu}. This unified training approach allows the model to learn optimal joint representations for both localization and captioning tasks, leading to improved overall performance and training stability.
+
+\subsection{Limitations}
+\textbf{Fixed Query Limitations and Scalability Constraints.}
+A fundamental limitation of PPVC lies in its reliance on a fixed number of queries ($K=10$) to determine the maximum number of detectable events.
+This design choice creates an inherent trade-off between recall and precision: low query numbers limit recall for videos with many events, while high query numbers may decrease precision due to false positive generation. Although our empirical analysis determined the optimal value through F1 score optimization, this constraint may limit the framework's applicability to videos with highly variable event densities or exceptionally complex temporal structures.
+
+\textbf{Computational Complexity and Memory Requirements.}
+The transformer-based architecture, while enabling parallel processing, introduces significant computational overhead due to the quadratic complexity of self-attention mechanisms~\cite{Vaswani2017-sc}. Specifically, the computational complexity scales as $O(n^2 \cdot d + n \cdot d^2)$, where n represents the sequence length and d denotes the feature dimension.
+This quadratic scaling in both time and memory requirements can become prohibitive for long video sequences, particularly when processing untrimmed videos that may contain hundreds or thousands of temporal segments. Recent work has established theoretical lower bounds proving that self-attention complexity is necessarily quadratic unless strong computational assumptions are violated~\cite{duman2023computational}.
+
+\textbf{Residual Sequential Characteristics.}
+Despite the parallel decoding architecture, PPVC maintains an encoding-then-decoding structure that preserves some sequential characteristics. The video encoder processes the entire input sequence before parallel pathways begin operation, potentially creating a bottleneck where poorly encoded features can negatively impact both localization and captioning performance. This limitation suggests that future architectures might benefit from more thoroughly parallel processing that extends to the encoding stage.
+
+\textbf{Caption Generation Quality and Diversity.}
+Our qualitative analysis reveals that PPVC occasionally generates repetitive captions for distinct events, particularly in scenarios with similar visual content but different semantic contexts.
+This limitation reflects a broader challenge in neural language generation where models may converge to high-probability but less diverse outputs~\cite{wang2019describing}.
+The repetitive caption problem is exacerbated by the parallel generation process, which lacks the sequential context that might help differentiate between similar events.
+
+\textbf{Memory Allocation and Hardware Constraints.}
+The multi-stack cross-attention mechanism and large query sets require substantial GPU memory, potentially limiting deployment in resource-constrained environments.
+Modern transformer architectures typically face sequence length limitations of approximately 512 tokens due to memory constraints~\cite{tay2022efficient}, which may restrict PPVC's applicability to extremely long video sequences without additional optimization techniques such as gradient checkpointing or attention approximations.
+
+\textbf{Limited Adaptability to Variable Event Complexity.}
+The framework's performance is optimized for datasets with specific event density distributions, as evidenced by the empirical determination of $K=10$ based on ActivityNet Captions statistics.
+This specialization may limit generalizability to video domains with significantly different temporal structures, such as surveillance footage with sparse events or highly dynamic content with continuous action sequences.
+
+\subsection{Future Directions for Improvement}
+The identified limitations suggest several promising directions for future research. Adaptive query mechanisms that dynamically adjust the number of queries based on video content could address the fixed query limitation. Advanced attention approximation techniques, such as linear attention variants or sparse attention patterns, could mitigate computational complexity while preserving model effectiveness. Additionally, incorporating more sophisticated caption diversification strategies during training could reduce repetitive generation issues and improve overall caption quality.
