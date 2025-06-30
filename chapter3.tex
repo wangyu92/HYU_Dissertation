@@ -502,3 +502,78 @@ We report the F1 score of the event localization for four trained model.
 The results are presented in Table \ref{tab:exp_ablation_gamma}.
 With an F1 difference of up to 2.6 over a wide range of $\gamma$, SBS shows stable results.
 Based on these results, we set $\gamma$ to 2.0 for the best performance.
+
+
+\section{Discussion and Analysis}
+\label{sec:discussion}
+
+\subsection{Strengths and Advantages of the SBS Framework}
+
+The Step-by-Step framework demonstrates several key advantages over existing dense video captioning approaches, particularly in addressing the fundamental challenges of overlapping event detection and coherent caption generation.
+
+\textbf{Explicit Event Counting for Overlapping Events.}
+Unlike traditional binary actionness classification approaches \cite{lin2018bsn,long2019gaussian}, SBS explicitly predicts the number of events in each temporal region. This design choice proves particularly effective for detecting multiple concurrent events, as demonstrated in our qualitative results where events with temporal IoU exceeding 0.8 are successfully distinguished and retained. The explicit counting mechanism eliminates the need for hand-crafted algorithms such as NMS, which often remove semantically distinct but temporally overlapping events based solely on temporal overlap criteria \cite{hosang2017learning}.
+
+\textbf{Content-Aware Proposal Generation.}
+The actionness-weighted tIoU algorithm represents a significant departure from content-agnostic proposal selection methods. By incorporating video content through the actionness table, SBS ensures that meaningful events are preserved even when they exhibit complex temporal relationships. This approach addresses a critical limitation of existing methods \cite{krishna2017dense,wang2018bidirectional} that rely on geometric constraints alone for proposal selection.
+
+\textbf{Hierarchical Sentence Generation.}
+The two-level RNN architecture consisting of context-level event encoder and sequential event captioner demonstrates clear benefits for generating coherent and contextually appropriate captions. As shown in Table~\ref{tab:eval_captioner}, SBS achieves remarkable improvements in METEOR scores, which correlates well with human judgment of caption quality \cite{banerjee2005meteor}. The hierarchical design enables the model to maintain narrative coherence across multiple events within the same video, addressing a limitation noted in previous work \cite{xiong2018move,lei2020mart}.
+
+\subsection{Limitations and Challenges}
+
+Despite its strengths, the SBS framework faces several limitations that merit careful consideration.
+
+\textbf{Computational Complexity.}
+The gradual processing approach, while effective for localization accuracy, introduces computational overhead compared to parallel processing methods. As shown in Table~\ref{tab:eval_inference_time}, SBS requires 1.13 seconds per video, which is significantly slower than PDVC's 0.18 seconds. This limitation may restrict its applicability in real-time processing scenarios or large-scale video analysis tasks.
+
+\textbf{Sequential Processing Bottlenecks.}
+Although SBS improves upon traditional sequential approaches, it maintains the fundamental localize-then-describe paradigm that can propagate errors from the localization stage to caption generation. While our results show improved robustness compared to baseline methods, the inherent sequential nature of the framework prevents complete elimination of this error propagation issue \cite{wang2021end}.
+
+\textbf{Limited Scalability to Complex Scenes.}
+The current implementation assumes a maximum of 14 overlapping events, which may prove insufficient for highly complex video scenarios. Additionally, the fixed temporal resolution based on 8-frame snippets may not capture events at multiple temporal scales effectively, particularly for videos with both short-duration actions and long-term activities.
+
+\subsection{Insights from Experimental Analysis}
+
+\textbf{Event Localization Performance.}
+The superior F1 score achieved by SBS (58.56) compared to existing methods validates the effectiveness of explicit event counting for dense video captioning. The consistent performance across different tIoU thresholds suggests that the approach is robust to varying temporal precision requirements. Notably, the improvement is most pronounced at higher tIoU thresholds (0.7, 0.9), indicating better temporal boundary detection accuracy.
+
+\textbf{Ablation Study Implications.}
+The ablation results in Table~\ref{tab:exp_ablation_module} provide crucial insights into the contribution of individual components. The significant performance drop when removing either the temporal event counter or temporal boundary classifier confirms that both components are essential for effective overlapping event detection. The comparison with NMS-based approaches further validates our design choice of content-aware proposal generation.
+
+\textbf{Focal Loss Sensitivity.}
+The stability of performance across different focal loss hyperparameters (Table~\ref{tab:exp_ablation_gamma}) demonstrates the robustness of the training procedure. The optimal performance at $\gamma = 2.0$ aligns with findings in object detection literature \cite{lin2017focal}, suggesting that the temporal event counting task shares similar characteristics with dense prediction problems.
+
+\subsection{Comparison with Contemporary Approaches}
+
+The SBS framework's performance relative to contemporary methods reveals important insights about design choices in dense video captioning.
+
+\textbf{Versus Parallel Processing Methods.}
+While PDVC \cite{wang2021end} achieves faster inference through parallel processing, SBS demonstrates superior localization accuracy, particularly for overlapping events. This trade-off highlights the tension between computational efficiency and localization precision in dense video captioning systems.
+
+\textbf{Versus Transformer-based Approaches.}
+Despite using transformer encoders for temporal modeling, SBS employs LSTM-based decoders for caption generation. This hybrid approach proves effective, as evidenced by the superior METEOR scores compared to fully transformer-based methods \cite{zhou2018end}. The results suggest that careful architectural choices based on task requirements may be more important than uniformly adopting the latest architectural innovations.
+
+\textbf{Versus Weakly Supervised Methods.}
+The competitive performance of SBS compared to weakly supervised approaches \cite{chen2021towards} demonstrates that carefully designed fully supervised methods can achieve strong results without requiring complex training procedures or large-scale pretraining datasets.
+
+\subsection{Future Directions and Improvements}
+
+\textbf{Computational Optimization.}
+Future work should explore methods to reduce the computational overhead of the gradual processing approach. Potential strategies include adaptive processing based on video complexity, early termination mechanisms for scenes with limited events, and parallel processing of independent temporal segments.
+
+\textbf{Multi-Scale Temporal Modeling.}
+Extending the framework to handle events at multiple temporal scales could improve its applicability to diverse video types. This might involve adaptive snippet duration based on scene content or hierarchical temporal modeling that captures both fine-grained actions and long-term narrative structure.
+
+\textbf{Integration with Modern Architectures.}
+While maintaining the core principles of explicit event counting and content-aware proposal generation, future versions could benefit from integration with modern transformer architectures and attention mechanisms. The deformable attention mechanisms explored in concurrent work \cite{zhu2021deformable} could potentially improve both efficiency and accuracy.
+
+\textbf{Cross-Modal Enhancement.}
+The current framework focuses primarily on visual information. Incorporating audio features and potentially automatic speech recognition could enhance event detection and description quality, particularly for videos with rich audio content \cite{iashin2020better,akbari2021vatt}.
+
+\subsection{Broader Implications}
+
+The SBS framework's success in explicit event counting suggests broader implications for temporal video understanding tasks.
+The principle of decomposing complex spatio-temporal problems into interpretable sub-tasks (counting, boundary detection, description) may prove valuable for other video analysis applications, including action detection, video summarization, and temporal video grounding \cite{Gao2017-ij,yuan2019temporal}.
+
+Furthermore, the demonstrated effectiveness of content-aware proposal generation challenges the widespread reliance on geometric constraints in temporal localization tasks, potentially influencing future research directions in video understanding and multimodal learning.
