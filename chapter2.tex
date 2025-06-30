@@ -1,74 +1,156 @@
-% !TEX root = ./main.tex
+% !TEX root = main.tex
 
 \chapter{Related Work}
 \label{chap:related_work}
 
-%------------------------------------------------------------------------------
-\section{Related Work}
-%------------------------------------------------------------------------------
-
-Dense–video–captioning (DVC) research builds on three lines of prior work:  
-(i) sentence–level \emph{video clip captioning},  
-(ii) \emph{dense} captioning of untrimmed videos under various supervision and architectural regimes, and  
-(iii) emerging techniques that exploit large–scale pre-training or adversarial learning to mitigate data sparsity and subjectivity.  
-We synthesise the literature along these axes, following the analytical structure suggested by our thesis ToC.
+This chapter provides a comprehensive overview of the existing literature relevant to the four approaches proposed in this dissertation. We systematically examine the evolution of video understanding and captioning technologies, analyze the challenges and limitations of current dense video captioning methods, and position our contributions within the broader research landscape.
 
 %------------------------------------------------------------------------------
-\subsection{Video Clip Captioning}
+\section{Foundations of Video Understanding and Captioning}
+\label{sec:foundations}
 %------------------------------------------------------------------------------
-Early studies generate a single sentence per \emph{trimmed} video via an encoder–decoder paradigm that mirrors neural machine translation \cite{sutskever2014sequence,cho-etal-2014-learning}.  
-CNNs encode frame sequences while RNNs (LSTM/GRU) \cite{venugopalan2015sequence,venugopalan2015translating} decode word tokens.  
-Enhancements include temporal attention \cite{yao2015describing}, hierarchical decoders \cite{pan2016hierarchical,baraldi2017hierarchical}, multimodal/semantic embeddings \cite{pan2016jointly,gan2017semantic,pan2017video,yu2017end}, spatial–hard attention \cite{liu2018fine}, reconstruction losses \cite{wang2018reconstruction}, and reinforcement learning for adaptive attention \cite{xiao2019video}.  
-Although paragraph-level extensions exist \cite{yu2016video,xiong2018move,lei2020mart}, clip-level methods cannot describe long, overlapping events and therefore motivate DVC.
 
-%------------------------------------------------------------------------------
-\subsection{Dense Video Captioning}
-%------------------------------------------------------------------------------
-\subsubsection{Sequential Bottom-Up / Top-Down Paradigms}  
-The seminal bottom-up DEC detects temporal proposals with LSTMs and captions them sequentially \cite{Krishna2017-pw}.  
-Follow-ups improve localisation via descriptiveness prediction \cite{Li2018-ll}, bidirectional context \cite{Wang2018-ap}, or single-stream proposals \cite{Mun2019-ap}.  
-Top-down pipelines invert the order: paragraph generation precedes sentence-to-segment grounding \cite{Deng2021-qd}.  
-Both suffer from error propagation and often rely on NMS or threshold heuristics, which hampers overlapping–event recall \cite{lin2018bsn}.
+\subsection{Video Captioning}
+The evolution of video captioning has been fundamentally shaped by advances in sequence-to-sequence learning and multimodal understanding.
+Early video captioning frameworks \cite{venugopalan2015sequence,venugopalan2015translating} were inspired by sequence-to-sequence tasks in machine translation \cite{sutskever2014sequence,cho-etal-2014-learning} and image captioning \cite{vinyals2015show,ren2017deep}.
+These foundational approaches employed encoder-decoder architectures consisting of Convolutional Neural Networks (CNNs) for visual feature extraction and Recurrent Neural Networks (RNNs), specifically Long Short-Term Memory (LSTM) networks and Gated Recurrent Units (GRUs), for temporal modeling and language generation.
 
-\subsubsection{Parallel and End-to-End Transformers}  
-Masked-transformer DVC \cite{Zhou2018-zu} and deformable-transformer PDVC \cite{Wang2021-zi} remove explicit proposal networks and decode localisation \emph{and} language jointly, leveraging self-attention’s long-range modelling superiority over LSTMs \cite{vaswani2017attention}.  
-PPVC further alleviates branch bottlenecks through a representation organiser, gating network, and multi-stack cross attention, boosting performance on ActivityNet and YouCook2 \cite{Choi2023-so}.
+To improve captioning quality beyond basic encoder-decoder structures, subsequent research incorporated sophisticated attention mechanisms \cite{yao2015describing}, hierarchical RNN architectures \cite{pan2016hierarchical,baraldi2017hierarchical}, visual-semantic embedding alignment \cite{pan2016jointly}, semantic decoders \cite{gan2017semantic,pan2017video}, reconstruction networks \cite{wang2018reconstruction}, and reinforced adaptive attention \cite{xiao2019video}.
+However, these methods remained fundamentally limited by their focus on generating single sentences to describe short, trimmed video clips.
 
-\subsubsection{Pre-training for Data Efficiency}  
-Limited manual annotations inspire vision–language pre-training.  
-E2ESG transfers the WikiHow-pre-trained T5 captioner into DVC \cite{Zhu2022-mg}.  
-UEDVC self-pre-trains on ActivityNet captions \cite{Zhang2022-ni}, whereas Vid2Seq scales to narrated YouTube videos with ASR transcripts \cite{Yang2023-fm}.  
-These sequence-to-sequence models excel at lexical diversity but still depend on noisy narration and couple localisation tightly to generation.
+The emergence of paragraph-level video captioning \cite{yu2016video,xiong2018move,lei2020mart} represented a significant advancement toward handling longer video content, yet still fell short of the granular event-level description required for comprehensive video understanding in real-world scenarios.
 
-\subsubsection{Weakly Supervised DVC}  
-WS-DEC \cite{Duan2018-qf} and EC-SL \cite{Chen2021-sv} replace proposal detection with alternating \emph{event captioning} and \emph{caption localisation}, requiring only sentence supervision.  
-PWS-DVC enhances this regime by pre-training the captioner on MSR-VTT and fine-tuning jointly, closing much of the gap to fully-supervised systems \cite{Aafaq2023-vk}.
+\subsection{Transformer Architecture in Video Understanding}
+The introduction of Transformer architectures \cite{Vaswani2017-sc} revolutionized both natural language processing and computer vision domains.
+Vision Transformers (ViTs) \cite{Dosovitskiy2021-vn} demonstrated that attention mechanisms could effectively replace convolutional operations for image understanding, achieving state-of-the-art performance while offering superior computational efficiency and the ability to capture long-range dependencies.
 
-\subsubsection{Gradual Reasoning for Overlapping Events}  
-SBS adopts a human-like \emph{step-by-step} strategy: explicit event counting (Temporal Event Counter), boundary classification, and context-aware sentence generation.  
-This avoids hand-crafted NMS, achieves high recall on overlapping regions, and remains interpretable \cite{StepByStep2023}.
+In the video domain, Video Vision Transformers \cite{Arnab2021-gv} and similar architectures began addressing the temporal dimension inherent in video data.
+These models demonstrated significant advantages over LSTM-based approaches: first, Transformers capture long-term dependencies through self-attention mechanisms without the information loss characteristic of recurrent architectures; second, they enable parallel processing of input sequences, substantially reducing training and inference time compared to sequential RNN processing.
 
 %------------------------------------------------------------------------------
-\subsection{Design Considerations Across Paradigms}
+\section{Dense Video Captioning: Approaches and Challenges}
+\label{sec:dense_video_captioning}
 %------------------------------------------------------------------------------
-\paragraph{Temporal Encoding.}  
-Transformers capture long-term dependencies in untrimmed videos and allow parallel training, whereas LSTMs are sequential but memory-efficient \cite{krishna2017dense,zhou2018end,wang2021end}.  
 
-\paragraph{End-to-End vs.\ Modular Training.}  
-While end-to-end models back-propagate global losses, higher inductive-bias modular designs (e.g., TEC+TBC in SBS) can excel when training data are scarce.
+\subsection{Sequential Pipeline Approaches}
+Dense Video Captioning was first formalized by Krishna et al. \cite{Krishna2017-pw}, who introduced the fundamental two-stage paradigm of event localization followed by caption generation.
+This sequential approach, often referred to as the ``localize-then-describe'' paradigm, has dominated the field and spawned numerous refinements and improvements.
 
-\paragraph{Event Representation.}  
-Heat-map generators and deformable sets bypass proposal filtering; query-based systems must balance query count with precision–recall trade-offs \cite{Choi2023-so}.
+Within this framework, Li et al. \cite{Li2018-ll} enhanced the localization stage by incorporating descriptiveness prediction and temporal coordinate regression to improve alignment between detected events and their linguistic descriptions.
+Wang et al. \cite{Wang2018-ap} adopted bidirectional LSTM architectures to leverage both past and future contextual information for more accurate event proposal generation.
+The streamlined approach by Mun et al. \cite{Mun2019-ap} addressed temporal dependencies between events by employing single-stream temporal action proposals \cite{buch2017sst} and designing event sequence networks to consider inter-event relationships.
+
+Despite these improvements, sequential approaches suffer from fundamental limitations including error propagation from the localization to the captioning stage, information bottlenecks that prevent the captioning module from accessing rich visual context, and the dependency on hand-crafted proposal selection algorithms such as Non-Maximum Suppression (NMS).
+
+\subsection{Joint and End-to-End Approaches}
+Recognizing the limitations of sequential processing, several researchers have developed joint training frameworks that simultaneously address event localization and caption generation.
+Zhou et al. \cite{Zhou2018-zu} introduced an end-to-end trainable framework based on Transformer architecture with masked attention mechanisms, attempting to bridge the two subtasks within a unified model.
+However, early end-to-end approaches often suffered from training instability and required careful optimization strategies.
+
+Deng et al. \cite{Deng2021-qd} proposed a hierarchical ``sketch-ground-refine'' pipeline that takes a top-down approach, first generating a paragraph-level story for the entire video, then grounding sentences to specific temporal segments, and finally refining the quality and precision of individual captions.
+This approach demonstrated that alternative paradigms to bottom-up processing could achieve competitive performance.
+
+Wang et al. \cite{Wang2021-zi} introduced PDVC (Parallel Dense Video Captioning), which performs localization and captioning simultaneously using parallel decoding with transformer decoders.
+While PDVC achieved significant performance improvements over sequential architectures, it introduced new challenges related to bottlenecks at branching points and the need for predetermining the number of events through additional event counter modules.
+
+\subsection{Graph-Based and Structured Approaches}
+Recent advances have explored graph-based representations to model complex relationships between video segments and events.
+Graph Attention Networks (GATs) have been employed to enhance event localization by modeling contextual relationships between temporal segments \cite{Im2024-ah,Chan2024-jd}.
+Zeng et al. \cite{Zeng2024-graph} utilized temporal proposal graphs to refine event boundaries, while Im and Chan \cite{Im2023-multimodal} incorporated audio-visual reasoning through GAT mechanisms for multimodal event detection.
+
+Li et al. \cite{Li2023-hvgr} extended these concepts to hierarchical graph structures that capture both local temporal patterns and global video-level context, addressing the limitations of previous methods that focused on fixed-scale temporal relationships.
 
 %------------------------------------------------------------------------------
-\subsection{Adversarial and Object-Centric Extensions}
+\section{Sequential vs. Parallel Paradigms in Dense Video Captioning}
+\label{sec:sequential_vs_parallel}
 %------------------------------------------------------------------------------
-Adversarial DVC (ADVC) frames localisation–captioning as a generative task: a video-conditioned GAN learns the distribution of human event sets, while a sentence GAN bridges video and language embeddings for realistic, diverse captions \cite{ssrn-4835759}.  
-Object-oriented variants incorporate structured trajectories and GAN critics to capture fine-grained entity interactions, improving descriptiveness in complex scenes \cite{Zhu2022-mg}.
+
+\subsection{Limitations of Sequential Processing}
+The traditional ``localize-then-describe'' paradigm faces several fundamental challenges that motivate the development of alternative architectures.
+Error propagation represents the most significant issue: inaccuracies in event localization directly cascade to the captioning stage, with no mechanism for the language generation module to correct temporal boundary errors.
+Information bottlenecks occur because the captioning module cannot access the full visual context that informed event detection, limiting its ability to generate contextually rich descriptions.
+
+Additionally, sequential approaches often require hand-crafted algorithms such as NMS for proposal selection, which operate independently of video content and may eliminate semantically important events based purely on temporal overlap criteria.
+This limitation becomes particularly problematic in videos with multiple concurrent events or nested temporal structures.
+
+\subsection{Parallel Processing Innovations}
+Parallel processing approaches attempt to overcome these limitations by performing event detection and caption generation simultaneously.
+Wang et al. \cite{Wang2021-zi} demonstrated that parallel decoding could eliminate the error propagation problem while maintaining competitive performance.
+However, their approach revealed new challenges, particularly bottlenecks at the branching point where a limited number of queries in transformer decoders restricts the number of detectable events.
+
+The integration of deformable transformers \cite{zhu2021deformable} and cross-attention mechanisms offers solutions to these bottleneck problems by enabling dynamic attention allocation and more flexible feature interaction between localization and captioning pathways.
+
+\subsection{Multi-Stack Architectures}
+Advanced parallel processing frameworks employ multi-stack cross-attention mechanisms to mitigate the sequential encoding-decoding bottleneck that persists even in parallel decoding approaches.
+By simultaneously referencing both organized high-level features and raw low-level visual information, these architectures can maintain rich contextual information throughout the processing pipeline.
 
 %------------------------------------------------------------------------------
-\subsection{Summary}
+\section{Weakly Supervised Learning and Pretraining for Video-Language Tasks}
+\label{sec:weakly_supervised_pretraining}
 %------------------------------------------------------------------------------
-Research has progressed from sequential LSTM frameworks to transformer-based, parallel, pre-trained, weakly supervised, and adversarial models.  
-Gradual reasoning improves overlapping-event recall; parallel deformable transformers alleviate bottlenecks; large-scale pre-training broadens linguistic coverage; and adversarial learning tackles subjectivity.  
-Our work unifies these complementary advances to push dense video captioning towards detailed, coherent, and human-like descriptions of long, real-world videos.
+
+\subsection{Weakly Supervised Dense Video Captioning}
+The annotation requirements for fully supervised dense video captioning—requiring precise temporal boundaries and corresponding natural language descriptions—represent a significant practical limitation for scaling these technologies.
+Weakly supervised approaches \cite{Duan2018-qf,Shen2017-gx,Chen2021-sv} address this challenge by learning from video-level captions without explicit event-level annotations.
+
+These methods typically employ alternating training strategies between event captioning and caption localization modules.
+WS-DEC \cite{Duan2018-qf} demonstrated that weakly supervised training could achieve performance comparable to fully supervised methods, while EC-SL \cite{Chen2021-sv} introduced attention mechanisms to better model the interaction between captioning and localization components.
+
+However, weakly supervised approaches face the fundamental challenge that insufficient or low-quality sentences generated by the captioning module are difficult to accurately localize, creating a chicken-and-egg problem that limits performance scaling.
+
+\subsection{Vision-Language Pretraining}
+The success of large-scale pretraining in natural language processing has motivated similar approaches in multimodal learning.
+CLIP \cite{Radford2021-kx} demonstrated that contrastive learning on web-scale image-text pairs could learn powerful visual representations that transfer effectively to downstream tasks without task-specific fine-tuning.
+
+Flamingo \cite{Alayrac2022-ac} extended this concept to few-shot learning in multimodal settings, while models like BLIP \cite{Li2023-blip} and BLIP-2 \cite{Li2023-blip2} introduced more sophisticated architectures for vision-language understanding and generation.
+These foundation models have shown remarkable capabilities in zero-shot and few-shot scenarios, suggesting their potential utility for dense video captioning applications.
+
+\subsection{Video-Specific Pretraining Approaches}
+Recent work has explored adapting vision-language pretraining specifically for video understanding tasks.
+HowTo100M \cite{Miech2019-hk} leveraged narrated instructional videos with automatically transcribed speech to learn video-text alignments at scale.
+Vid2Seq \cite{Yang2023-fm} employed large-scale pretraining on narrated video datasets to learn event-caption sequence generation, while UEDVC \cite{Zhang2022-ni} explored pretraining strategies that incorporate pseudo-event-caption sequences.
+
+However, these approaches often rely on noisy automatically generated annotations or misaligned narration, limiting their temporal precision and effectiveness for dense captioning applications that require precise event boundary detection.
+
+%------------------------------------------------------------------------------
+\section{Handling Nondeterminism and Subjectivity in Video Interpretation}
+\label{sec:nondeterminism}
+%------------------------------------------------------------------------------
+
+\subsection{The Challenge of Subjective Event Definition}
+Dense video captioning inherently involves subjective interpretations of event boundaries and descriptions.
+Different annotators may identify distinct temporal segments for the same video content and generate diverse caption sets for identical events.
+This subjectivity introduces fundamental challenges for traditional deterministic approaches that assume a single ground truth for each video segment.
+
+Most existing models operate under the assumption of deterministic ground truth, which penalizes reasonable variations during training and evaluation.
+Fujita et al. \cite{Fujita2020-ob} proposed the SODA evaluation framework to assess narrative coherence rather than token-level overlap, better aligning evaluation metrics with human judgment of caption quality.
+
+\subsection{Generative Adversarial Networks in Video Applications}
+Generative Adversarial Networks \cite{Goodfellow2014-hs} offer a principled approach to modeling the distributional nature of video interpretation tasks.
+Recent advances in video GANs have demonstrated their effectiveness in generating temporally coherent video content \cite{Arjovsky2017-qu,Gulrajani2017-dh}, suggesting their potential application to caption generation tasks that require modeling diverse but valid interpretations.
+
+The adversarial training paradigm enables models to capture the distribution of human-annotated events and captions rather than converging to a single deterministic output.
+This capability is particularly valuable for dense video captioning, where multiple valid interpretations often exist for the same video content.
+
+\subsection{Adversarial Training for Text Generation}
+Adversarial training techniques have been successfully applied to text generation tasks \cite{Donahue2018-ez,Le2022-lz}, demonstrating their ability to generate diverse and realistic outputs.
+However, the discrete nature of text poses challenges for standard GAN training, motivating the development of specialized techniques such as policy gradient methods and continuous relaxations of discrete variables \cite{Jang2017-ur,Maddison2017-se}.
+
+The application of adversarial training to video captioning tasks requires careful consideration of both temporal coherence in video understanding and linguistic fluency in text generation, representing a challenging but promising research direction.
+
+%------------------------------------------------------------------------------
+\section{Summary and Positioning}
+\label{sec:summary_positioning}
+%------------------------------------------------------------------------------
+
+The review of existing literature reveals several key research directions and limitations that motivate the four approaches proposed in this dissertation:
+
+\textbf{Sequential vs. Parallel Processing:} While sequential approaches dominate the field, they suffer from error propagation and information bottlenecks. Parallel processing offers solutions but introduces new challenges related to event enumeration and feature integration.
+
+\textbf{Supervision Requirements:} Fully supervised methods achieve strong performance but require expensive annotations. Weakly supervised approaches reduce annotation costs but face challenges in training stability and performance scaling.
+
+\textbf{Temporal Precision:} Existing methods struggle with overlapping events and variable-length temporal structures. Progressive detection strategies and explicit event counting may address these limitations.
+
+\textbf{Nondeterminism:} Most approaches assume deterministic ground truth, failing to capture the inherent subjectivity in event interpretation. Adversarial training frameworks offer potential solutions for modeling diverse valid interpretations.
+
+The four approaches presented in this dissertation—Step-by-Step (SBS), Parallel Pathway with Deformable Transformer (PPVC), Pretraining-based Weakly Supervised Dense Video Captioning (PWS-DVC), and Adversarial Dense Video Captioning (ADVC)—each address specific limitations identified in this literature review while contributing complementary advances to the field of dense video captioning.
