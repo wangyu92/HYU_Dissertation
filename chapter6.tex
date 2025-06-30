@@ -1,34 +1,28 @@
 % !TEX root = ./main.tex
 
-\chapter{Adversarial Pathway: Realistic Captioning via Unsupervised Pretraining and Adversarial Adaptation (ADVC)}
+\chapter{Realistic Captioning via Unsupervised Pretraining and Adversarial Adaptation}
 \label{chap:adversarial_pathway}
 
 \section{Nondeterminism Challenges in Dense Video Captioning}
 
-The availability of large-scale video datasets~\cite{Heilbron2015-ha,Abu-El-Haija2016-yh,Carreira2019-va} and advances in video understanding~\cite{Tran2015-uq,Feichtenhofer2019-mh,Arnab2021-gv} have facilitated the development of video-related tasks.
-Recent interest in natural language processing (NLP) has led to efforts to jointly understand vision and language~\cite{Radford2021-kx,Luo2022-yq}.
-Video captioning~\cite{Rohrbach2013-md} is a significant task that integrates computer vision and NLP to provide sentence-based descriptions for videos.
-Dense video captioning (DVC)~\cite{Krishna2017-pw} extends this task to the untrimmed video setting, where the objective is to temporally segment the video into a sequence of salient events and generate a descriptive sentence for each event.
-It requires solving two tightly coupled subproblems: (i) identifying semantically meaningful temporal boundaries (event localization), and (ii) generating coherent and contextually grounded captions aligned with each segment.
-DVC holds potential for real-world applications, such as video retrieval, surveillance, and assistive systems\cite{Wajid2024-ab}.
+Dense video captioning (DVC) presents a fundamental challenge that extends beyond the technical complexities of temporal localization and language generation: the inherent nondeterminism in human perception and interpretation of video content~\cite{Krishna2017-pw,Fujita2020-ob}. Unlike conventional computer vision tasks where ground truth annotations can be objectively defined, DVC operates in a domain where multiple valid interpretations exist for the same visual input, creating substantial challenges for traditional supervised learning paradigms.
 
-A key challenge in DVC lies in its inherent non-determinism, stemming from the subjectivity of human perception.
-Different annotators may interpret the same video differently, producing diverse sets of event boundaries and associated captions.
-This semantic ambiguity introduces uncertainty during training, as multiple plausible outputs may exist for a given input. Conventional supervised methods, which attempt to minimize loss against a single annotated ground truth, often fail to capture the full diversity of valid interpretations.
-Consequently, models tend to generate oversimplified outputs, such as broad events and generic catch-all sentences, that do not reflect the richness of the underlying video content~\cite{Summers2021-mz}.
+\textbf{The Nature of Perceptual Subjectivity.}
+The subjective nature of event interpretation manifests in multiple dimensions within dense video captioning. First, \textit{temporal boundary ambiguity} arises when different annotators identify varying start and end points for the same semantic event, particularly in scenarios involving gradual transitions or overlapping activities~\cite{Summers2021-mz}. Second, \textit{semantic granularity variation} occurs when annotators choose different levels of detail in event segmentation—some may identify fine-grained micro-events while others focus on broader, higher-level activities. Third, \textit{descriptive diversity} emerges in caption generation, where multiple linguistically valid descriptions can accurately represent the same visual content, ranging from literal observations to interpretive narratives~\cite{Fujita2020-ob}.
 
-Numerous efforts have been made to improve DVC, resulting in significant advancements in performance.
-However, most methods overlook the inherent non-determinism of the DVC task.
-For example, some approaches~\cite{Krishna2017-pw,Li2018-ll,Mun2019-ap} focus on enhancing event localization and captioning as separate subtasks, while others~\cite{Zhou2018-zu,Wang2021-zi,Deng2021-qd} train them together, taking into account their correlation.
-Recently, there has been a rise in pretraining methods~\cite{Zhang2022-ni,Yang2023-fm} that pretrain extensive training samples from large video-language datasets, demonstrating exceptional performance.
-Nevertheless, these methods still rely on strict supervision with limited video-language datasets.
-Their localization performance is modest due to narrated video datasets that do not faithfully describe video content~\cite{Yang2023-fm}.
-Additionally, they use a sequence-to-sequence approach to handle events and captions, leading to highly coupled localization and captioning performance~\cite{Zhang2022-ni}.
+This nondeterministic nature fundamentally contradicts the assumptions underlying most existing DVC methodologies. Traditional approaches~\cite{Li2018-ll,Wang2018-ap,Mun2019-ap} treat ground truth annotations as definitive targets, employing deterministic loss functions that penalize any deviation from the single provided annotation. This paradigm fails to acknowledge that alternative, equally valid interpretations may exist, leading to models that generate oversimplified or overly conservative outputs that lack the richness and diversity characteristic of human-generated descriptions.
 
-This paper addresses the nondeterminism inherent in dense video captioning through the introduction of ADVC, a novel framework employing adversarial training.
-Comprising two distinct stages, namely unsupervised pretraining and adversarial adaptation, ADVC stands apart from prevailing supervised methodologies.
-The pretraining phase incorporates video and sentence embedding modules trained unsupervisedly on abundant unlabelled video and text corpora.
-In the subsequent adaptation stage, localization is accomplished by assimilating the distribution of human-annotated events, while captioning entails mapping the video representation to the sentence representation space.
+\textbf{Limitations of Deterministic Approaches.}
+Contemporary DVC methods can be broadly categorized into sequential~\cite{Krishna2017-pw,Li2018-ll} and joint approaches~\cite{Zhou2018-zu,Wang2021-zi,Deng2021-qd}, both of which suffer from deterministic assumptions. Sequential methods decompose the problem into separate event localization and caption generation stages, optimizing each component independently against fixed targets. While this modular approach enables focused improvements in individual subtasks, it inherently cannot capture the interdependencies between localization and captioning decisions that vary across different valid interpretations.
+
+Joint training approaches~\cite{Wang2021-zi,Deng2021-qd} attempt to address the coupling between subtasks but maintain the fundamental assumption of deterministic ground truth. These methods typically employ set prediction frameworks or attention mechanisms to jointly optimize localization and captioning objectives. However, their reliance on single-target supervision limits their ability to model the distribution of valid outputs, resulting in models that converge toward average or compromise solutions rather than capturing the full spectrum of meaningful interpretations.
+
+Recent pretraining methodologies~\cite{Zhang2022-ni,Yang2023-fm} leverage large-scale video-text datasets to improve model capabilities through transfer learning. While these approaches demonstrate improved performance on standard benchmarks, they perpetuate the deterministic paradigm by treating automatically generated or narrated captions as ground truth. The inherent noise and misalignment in large-scale datasets further exacerbate the mismatch between training objectives and the true nondeterministic nature of the task.
+
+\textbf{The Need for Distributional Modeling.}
+The fundamental challenge lies in the mismatch between the distributional nature of valid DVC outputs and the point-estimate assumptions of conventional training paradigms. Real-world video interpretation involves complex cognitive processes where human annotators draw upon contextual knowledge, personal experience, and interpretive frameworks to construct coherent narratives~\cite{radvansky2006event}. This process naturally yields diverse but equally valid outputs that reflect the richness of human understanding.
+
+Addressing this challenge requires a fundamental shift from deterministic modeling toward approaches that can capture and generate from the distribution of valid interpretations. Adversarial training frameworks~\cite{Goodfellow2014-hs,Arjovsky2017-qu} offer a principled approach to this problem by enabling models to learn implicit distributions rather than explicit point estimates. By training generators to produce outputs that are indistinguishable from human-generated annotations, adversarial approaches can potentially capture the natural variability and creativity inherent in human video interpretation.
 
 \begin{figure}[t]
     \centering
@@ -37,22 +31,18 @@ In the subsequent adaptation stage, localization is accomplished by assimilating
     \label{fig:intro_approach}
 \end{figure}
 
+\textbf{Toward Adversarial Dense Video Captioning.}
+This paper introduces ADVC (Adversarial Dense Video Captioning), a novel framework specifically designed to address the nondeterminism challenges in dense video captioning through adversarial learning principles. As illustrated in Figure~\ref{fig:intro_approach}, our approach fundamentally differs from existing methods by embracing rather than avoiding the inherent uncertainty in video interpretation.
 
-Our unique approach to unsupervised pretraining and adversarial adaptation offers several advantages over existing methods as illustrated in Figure~\ref{fig:intro_approach}.
-The video embedding and sentence embedding modules of the unsupervised learning approach have significant potential with additional data, as they are pretrained on easily accessible, high-quality unlabeled videos and text corpora.
-In the adaptation stage, ADVC generates accurate and descriptive events and captions with relatively small amounts of training samples by exploiting the high sample efficiency of adversarial learning.
-For a video, ADVC is capable of generating various event-caption sets by controlling the input noise, based on the inheritance of adversarial.
-Most importantly, the localization and captioning based on the adversarial approach directly learn the distribution of ground-truth events and captions, 
-producing realistic outcomes similar to those produced by human annotators. 
-Moreover, the separated training workflow of localization and captioning is very effective in decoupling them with only a suitable relationship.
+ADVC employs a two-stage training paradigm consisting of unsupervised pretraining followed by adversarial adaptation. The pretraining stage leverages abundant unlabeled video and text corpora to learn rich multimodal representations without the constraints of deterministic supervision. This approach enables the model to capture the natural diversity present in large-scale data while avoiding the bias introduced by limited annotated datasets.
 
-We conduct extensive experiments to demonstrate the effectiveness of the ADVC approach.
-Specifically, we show the effectiveness of unsupervised pretraining by pretraining ADVC on large-scale, high-quality unlabeled video datasets and text corpora.
-Additionally, we demonstrate the effectiveness of adversarial event localization and captioning by comparing it to existing methods on various downstream benchmark datasets\cite{Krishna2017-pw,Zhou2018-eq,Huang2020-as}.
-The results indicate that ADVC not only achieves state-of-the-art performance compared to existing methods but also produces qualitatively realistic event and captioning outputs.
+The subsequent adversarial adaptation stage explicitly models the distribution of human annotations through adversarial training. Rather than optimizing against fixed targets, the model learns to generate event-caption pairs that are statistically indistinguishable from human-produced annotations. This distributional approach enables the generation of diverse, contextually appropriate outputs that reflect the natural variability in human interpretation while maintaining semantic coherence and temporal accuracy.
 
-In summary, we present our contributions as follows: (i) ADVC is the first adversarial approach method for dense video captioning.
-(ii) We propose a novel approach of separately pretraining the vision-language problem and adversarial bridging in a downstream task. (iii) ADVC outperforms the existing methods on various benchmark datasets and produces more realistic results.
+Our framework offers several key advantages over existing approaches: (i) \textit{distributional modeling} that captures the natural diversity of valid interpretations rather than converging to deterministic outputs, (ii) \textit{unsupervised scalability} that leverages large-scale unlabeled data to learn rich representations without annotation bias, and (iii) \textit{realistic generation} that produces outputs statistically similar to human annotations, thereby better reflecting the true nature of video interpretation tasks.
+
+Through extensive experimental validation on standard benchmarks~\cite{Krishna2017-pw,Zhou2018-eq}, we demonstrate that ADVC not only achieves competitive quantitative performance but also generates qualitatively more diverse and realistic outputs compared to existing deterministic approaches, establishing a new paradigm for addressing nondeterminism in dense video captioning.
+
+
   
 \section{Proposed ADVC Framework}
 
@@ -60,7 +50,7 @@ Figure~\ref{fig:network_design} presents an overview of ADVC, which consists of 
 In the pretraining stage, pretrained models for video and sentence embeddings are obtained using unlabeled videos and text corpora.
 The adaptation stage aims to adapt the pretrained models for localization and captioning for downstream tasks.
 
-\begin{figure}[t]
+\begin{sidewaysfigure}
     \centering
     \includegraphics[width=1\linewidth]{figures/advc_method_network_design}
     \caption{
@@ -72,7 +62,21 @@ The adaptation stage aims to adapt the pretrained models for localization and ca
     Both modules incorporate an adversarial approach, necessitating the integration of a discriminator within each module.
     }
     \label{fig:network_design}
-\end{figure}
+\end{sidewaysfigure}
+
+% \begin{figure}[t]
+%     \centering
+%     \includegraphics[width=1\linewidth]{figures/advc_method_network_design}
+%     \caption{
+%         Overview: ADVC consists of two stages, pretraining (\textcolor{pt_stage}{\rule{8pt}{8pt}}) and adaptation (\textcolor{at_stage}{\rule{8pt}{8pt}}).
+%     The pretraining stage includes modules for video and sentence embedding. 
+%     The video embedding module uses a variational autoencoder, while the sentence embedding module uses an autoencoder to encode input video features and sentences, respectively.
+%     The adaptation stage has two main components, event localization, and bridging and captioning.
+%     Event localization generates event proposals using video embedding vectors as input while bridging and captioning generate sentence embedding vectors for captions using video embedding vectors for each event as input.
+%     Both modules incorporate an adversarial approach, necessitating the integration of a discriminator within each module.
+%     }
+%     \label{fig:network_design}
+% \end{figure}
 
 \subsection{Pretraining Stage}
 \label{subsec:pretraining}
@@ -310,7 +314,7 @@ Latent noise vectors are sampled from $\mathcal{N}(0, 1)$ with fixed seeds to en
 For event localization, we use a ResNet-40~\cite{He2016-qc}-based discriminator. Bridging and captioning discriminators are implemented using two-layer MLPs with 64 hidden units.
 This configuration, combined with adversarial objectives, allows ADVC to generate realistic event-caption pairs that closely follow the distribution of human annotations.
 
-\begin{table*}[t]
+\begin{sidewaystable}
     \center
     \caption{Comparison of ADVC with state-of-the-art methods on Activinet Captions validation set.}
     \resizebox{\linewidth}{!}{
@@ -335,7 +339,7 @@ This configuration, combined with adversarial objectives, allows ADVC to generat
     \end{tabular}
     }
     \label{tab:performance_anet}
-\end{table*}
+\end{sidewaystable}
 
 \begin{table}[t]
     \centering
@@ -435,15 +439,15 @@ These results highlight ADVC's strong capability in video captioning tasks, achi
 Particularly noteworthy is ADVC's performance relative to Vid2Seq, a model leveraging advanced pretraining techniques and a sophisticated backbone.
 Despite the less complex architecture, ADVC's results are impressive, underscoring the efficacy of its approach.
 
-\begin{figure*}[t]
+\begin{sidewaysfigure}
     \centering
     \includegraphics[width=0.95\linewidth]{figures/advc_qualitative}
     \caption{Example of ADVC's dense video captioning on the ActivityNet Captions validation set.}
-    \label{fig:qualitative}
-\end{figure*}
+    \label{fig:advc_qualitative}
+\end{sidewaysfigure}
 
 \subsection{Qualitative Results}
-In Figure~\ref{fig:qualitative}, we present an illustrative example of dense video captioning outcomes for videos in the ActivityNet Captions validation set.
+In Figure~\ref{fig:advc_qualitative}, we present an illustrative example of dense video captioning outcomes for videos in the ActivityNet Captions validation set.
 This result clearly shows that ADVC performs localization and captioning similar to the ground-truth pattern.
 In particular, ADVC is based on GANs, which empowers it to generate multiple events and captions for a given video by modulating the noise parameter $z$.
 Thus, we present two distinct options for a single video, each accompanied by a unique $z$ value.
