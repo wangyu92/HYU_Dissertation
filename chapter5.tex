@@ -1,0 +1,503 @@
+% !TEX root = ./main.tex
+
+\chapter{Weakly Supervised Dense Video Captioning with Pretraining (PWS-DVC)}
+\label{chap:pws_dvc}
+
+\section{Weakly-Supervised Approach Motivation}
+
+Recently, there has been a notable increase in efforts~\cite{Lei2021-mt,Sun2022-ij,Zellers2021-tm,Bain2021-si,Alayrac2022-ac,Akbari2021-ih} to understand the correlation between video and language within the domain of computer vision.
+Attention towards tasks like video captioning~\cite{Gao2017-zs,Wang2018-yx,Rohrbach2013-md,Lin2022-wi,Seo2022-ok} and temporal action localization, which aim to gain an in-depth comprehension of videos, has significantly increased due to the availability of extensive video-related datasets~\cite{Karpathy2014-xm,Zellers2022-zr,Miech2019-hk,Zhou2018-eq,Huang2020-as}.
+Dense video captioning~\cite{Krishna2017-pw} is an advanced task that integrates video captioning and temporal action localization.
+Its objective is to identify multiple temporal bins that encompass significant scenes within a video, followed by providing informative descriptions for each bin in the form of a single sentence.
+This task holds high potential for application in a variety of video analytics tasks.
+
+Dense video captioning presents significant challenges, especially when encoding lengthy videos without trimming them. 
+While several effective approaches have been developed for video understanding, they mainly focus on short videos lasting between 10 to 30 seconds, typically centered around a single topic.
+However, dense video captioning is specifically designed for videos that exceed a duration of 120 seconds.
+These longer videos contain a multitude of activities and objects, requiring a comprehensive and detailed representation for encoding.
+The outputs of dense video captioning, which include events and captions, are complex. In untrimmed videos, multiple events can occur simultaneously and temporally overlap with each other.
+Therefore, it is crucial to consider both the quality and coherence of the captions.
+
+In addition to challenges from an input and output perspective, dense video captioning task has another non-trivial challenge of a nondeterministic nature, wherein individuals may define events and captions for videos in varying ways.
+The provided visual representation, depicted in Figure~\ref{fig:nondeterminism}, serves as an illustrative example of a sample extracted from the ActivityNet Captions~\cite{Krishna2017-pw} dataset.
+The video exhibits two distinct instances of ground-truth events along with corresponding captions.
+The presence of non-determinism in the model contributes to an elevated level of uncertainty~\cite{Summers2021-mz}, thereby impeding the generation of descriptive output.
+Increasing the number of training samples would effectively address the existing uncertainty.
+However, it is important to note that the availability of dense video captioning-specific datasets such as ActivityNet Captions~\cite{Krishna2017-pw} and YouCook2~\cite{Zhou2018-eq}, which encompass events and corresponding captions for videos, is currently limited.
+There exists a conspicuous dearth of temporal action region datasets in comparison to text corpora that are pertinent to captioning.
+The process of creating supplementary datasets entails substantial investments in terms of both time and financial resources.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/pws_introduction_nondeterminism}
+    \caption{Example of dense video captioning for a video extracted from the ActivityNet Captions dataset.
+        Note the different definitions of events and captions for the same video.}
+    \label{fig:nondeterminism}
+\end{figure}
+
+
+
+Numerous attempts~\cite{Wang2023-tu,Aafaq2023-vk,Zhang2022-ni,Zhu2022-mg,Yang2023-fm,Choi2022-cu,Iashin2020-ln,Wang2021-xe,Suin2020-tq,Zhou2018-zu,Wang2018-ap,Mun2019-ap,Krishna2017-pw,Li2018-ll,Deng2021-qd,Wang2021-zi,Choi2023-so} have been made to tackle the issue of dense video captioning, but it is important to note that, to the best of our knowledge, all existing approaches take a deterministic approach and mainly focus on restricted datasets.
+For example, some methods~\cite{Krishna2017-pw,Wang2018-ap,Li2018-ll,Mun2019-ap,Choi2023-so} divide the problem of event detection into two subtasks: event localization and event captioning.
+They use box prediction and regression techniques to address event localization.
+Some approaches~\cite{Deng2021-qd,Wang2021-zi,Choi2022-cu} have improved their performance by developing parallel pipelines that consider the interdependence of the two subtasks.
+However, these models are still trained deterministically using datasets specifically designed for restricted dense video captioning.
+Recently, pretraining methods~\cite{Yang2023-fm} have been proposed that use narrated video datasets based on Auto Speech Recognition (ASR) technology.
+These methods aim to overcome the constraints of dense video captioning datasets.
+However, these datasets lack faithfully defined events and captions, and their effectiveness is limited for videos with little or no speech.
+
+On the other hand, in addition to conventional approaches, some weakly supervised dense video captioning approaches~\cite{Duan2018-qf,Rahman2019-rp,Chen2021-sv} have been proposed.
+For instance, Duan et al.~\cite{Duan2018-qf} introduced a weakly supervised dense video captioning method.
+Rahman et al.~\cite{Rahman2019-rp} proposed a multi-modal approach to improve the performance of weakly supervised dense video captioning.
+Chen et al.~\cite{Chen2021-sv} recently introduced a bridging network to enhance the connection between the event captioning module and sentence localization.
+One advantage of these methods is that they do not require explicit event supervision.
+However, since they directly localize captioning to the video, high-quality descriptive captions are required.
+Inadequate captions result in a lack of localization, leading to non-descriptive outcomes with limited occurrences.
+To enhance model performance, it is widely acknowledged that language models benefit from extensive datasets and large-scale models~\cite{Borgeaud2021-dx}.
+For the captioning module, a substantial corpus of textual data is necessary.
+However, existing methods are limited by their reliance on the designated dataset specifically designed for dense video captioning.
+
+To briefly summarize the challenges faced by dense video captioning as mentioned above, they are as follows.
+(i) The datasets available for training dense video captioning are quite limited.
+To effectively handle the task, a substantial dataset comprising extensive events and captions is necessary. 
+Creating a dataset manually annotated by humans from untrimmed video requires substantial effort.
+(ii) The weakly supervised learning method is appealing as it does not rely on ground truth events, but it is limited by its dependence on the performance of the captioning module.
+Therefore, meticulous attention must be given to the design and training of the captioning module.
+
+We present several important observations to address these challenges. Previous works have demonstrated that pretraining techniques result in significant improvements in the performance of dense video captioning methods. 
+These techniques leverage imperfect transcribed text datasets to overcome the limited availability of event-caption datasets. We have access to a substantial amount of high-quality datasets for video-clip captioning. 
+However, their drawback is the absence of event information, which renders them unsuitable for direct use in dense video captioning.
+Fortunately, weakly supervised dense video captioning does not require event supervision, enabling extensive utilization of video-clip datasets.
+
+This work introduces PWS-DVC, a method for dense video captioning that utilizes weak supervision and can be trained on video-clip-level description datasets.
+The PWS-DVC system comprises two modules: event captioning and caption localization.
+The event captioning module is pretrained using readily-available datasets~\cite{Wang2019-tk,Lei2020-rr,Chen2011-ai,Bain2021-si,Xu2016-ti}.
+We then fine-tune the event captioning module in tandem with the caption localization module through an iterative process of fine-tuning, utilizing weakly supervised learning in a downstream task.
+Our approach enables a robust event captioning module that is based on pretraining, resulting in the generation of detailed and descriptive captions.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/pws_Introduction_approach}
+    \caption{The approach of the proposed method. Our technique primarily focuses on leveraging the absence of ground-truth data in weakly supervised dense video captioning.
+        This is achieved by pretraining the event captioning module using video clip-level datasets.
+        CL and EC stand for caption localization and event captioning, respectively.}
+    \label{fig:approach}
+\end{figure}
+
+As shown in Figure~\ref{fig:approach}, utilizing the pretraining approach in our event captioning module enhances both the quality of captions and event localization.
+Our proposed weakly supervised dense video captioning strategy differs from the conventional approach by replacing the two modules of event localization and event captioning with the modules of event captioning and caption localization.
+In the conventional technique, the improvement of the captioning module is not affected by the localization process.
+However, in the weakly supervised method, the effectiveness of the captioning module has a direct impact on the localization outcome.
+Pretraining the captioning module is advantageous for both conventional and weakly supervised approaches, but it has a stronger synergy with the weakly supervised method.
+
+To demonstrate the effectiveness of PWS-DVC, we first train the event captioning module on MSR-VTT~\cite{Xu2016-ti}, a commonly used dataset for generating captions for video clips.
+By utilizing the event captioning module, PWS-DVC outperforms other video-clip captioning methods.
+We then fine-tune PWS-DVC on the ActivityNet Captions~\cite{Krishna2017-pw} dataset, training the event captioning and caption localization modules in an alternating manner.
+This approach results in superior performance in both captioning and localization tasks compared to other weakly supervised learning methods.
+
+The remaining sections of this paper are structured as follows.
+Section~\ref{sec:related-work} provides an overview of the existing literature on video-clip captioning and dense video captioning, highlighting the distinctions between our proposed model, PWS-DVC, and existing approaches.
+In Section~\ref{sec:method}, we provide a comprehensive explanation of the technique employed in PWS-DVC.
+Section~\ref{sec:experiment} demonstrates the efficiency of PWS-DVC through a series of comprehensive tests.
+Finally, we conclude the paper in Section~\ref{sec:conclusion}.
+
+The main contributions of PWS-DVC can be summarized as follows:
+\begin{itemize}
+    \item We introduce a novel pretraining method for weakly dense video captioning, which is the first of its kind to the best of our knowledge.
+    \item Our approach directly utilizes multiple accessible video-clip datasets for dense video captioning, demonstrating its effectiveness.
+    \item The PWS-DVC model outperforms existing weakly supervised dense video captioning methods.
+\end{itemize}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/pws_dvc_history}
+    \caption{History of dense video captioning.
+        There are two main categories of approaches in the field of dense video captioning: supervised approaches and poorly supervised approaches.}
+    \label{fig:history}
+\end{figure}
+
+
+
+\section{PWS-DVC Framework}
+
+\subsection{Overview}
+Our proposed method, PWS-DVC, addresses the constraint of existing dense video captioning methods, which rely on specialized datasets for dense video captioning, such as ActivityNet Captions~\cite{Krishna2017-pw}.
+Instead, we leverage weakly supervised dense video captioning to its maximum capacity by pretraining on readily accessible datasets for video clip-level captioning.
+As depicted in Figure~\ref{fig:net_archi}, PWS-DVC comprises two distinct modules, namely the caption localization module and the event captioning module.
+The module for captioning localization is responsible for determining the specific temporal interval in a video where a particular caption is positioned. On the other hand, the event captioning module is designed to construct a phrase that describes a video clip based on the provided video and event.
+To address the difficulty of dense video captioning, we employ a two-step approach. Firstly, we pretrain the event captioning module using video clip-level datasets.
+Subsequently, the two modules are trained in an alternating manner.
+
+\subsection{Caption Localization Module}
+The goal of the sentence localization module is to accurately determine the temporal position of a sentence generated by the event captioning module, which is based on a specific segment of a video.
+To achieve this objective, the event localization module analyzes the correlation between video frames and captions.
+This task is accomplished by leveraging the temporal correlation of representations within the videos.
+
+We adopt transformer encoder~\cite{Vaswani2017-sc} to encode both video and caption, enabling exploration of the temporal association between these two modalities through their respective representations, which is proven highly effective in capturing sequential data.
+The process involves sequentially encoding video and caption using transformer encoders, resulting in the generation of video context memory and caption context memory, respectively.
+The input is then subjected to an attention-pooling layer to rectify its temporal structure.
+Finally, video and caption context memory integration is achieved by employing an attention network, allowing for the examination of video representations that align with the given fixed caption temporally.
+
+We formulate this process as follows.
+In the context of the transformer model, the initial step involves the application of positional encoding to both a sequence of video frames and a sequence of words inside a sentence, as illustrated in Figure~\ref{fig:net_archi}.
+\begin{equation}
+    \bm{H}_v^0 = \text{PE} (\text{Linear} \left( \bm{F} \right) )
+    \label{eq:linear_transformation}
+\end{equation}
+The positional encoding function, denoted as PE($\cdot$), is applied to the frame-level video feature $\bm{F}$, which represents the input video $v$ or the embedding vector of the input caption.
+The frame-level video feature is based on the C3D model proposed by~\cite{Tran2015-uq}.
+
+The video and caption encoding components are based on the transformer encoder, which comprises a multiple of $N$ layers.
+The composition of each layer consists of self-attention and feed-forward modules, with a residual connection and layer normalization appended after each module.
+The output $\bm{H}^{l+1}$ of the transformer encoder is obtained in a single cycle, using the input $\bm{H}^l$.
+The final output of the last cycle, which corresponds to the last layer, is denoted as $\bm{H}$.
+The subsequent pair of equations can be employed to delineate encoding based on transformers.
+\begin{equation}
+    \bm{H}^{l}_{self} = \Psi \left(H^l + \text{MA}\left( \bm{H}^l, \bm{H}^l, \bm{H}^l \right) \right)
+    \label{eq:video_encoder_self_attention}
+\end{equation}
+\begin{equation}
+    \bm{H}^{l+1} = \Psi \left( \text{FFN}\left(\bm{H}^{l}_{self}\right) + \bm{H}^{l}_{self} \right)
+    \label{eq:video_encoder_ffn}
+\end{equation}
+\begin{equation}
+    \text{FFN}(x) = \text{max} \left(0, x\bm{W}_1 + b_1 \right)\bm{W}_2 + b_2
+    \label{eq:video_encoder_feed_forward}
+\end{equation}
+\begin{equation}
+    \text{MA}(\bm{Q}, \bm{K}, \bm{V}) = \text{Cat}(\{\text{ATT}_i(\bm{Q}, \bm{K}, \bm{V})\}_{i=1}^h)W_O
+\end{equation}
+\begin{equation}
+    \text{ATT}(\bm{Q}, \bm{K}, \bm{V}) = \text{softmax}( \frac{(\bm{QW}_Q)(\bm{K}\bm{W}_K)^T}{\sqrt{d_m}} ) (\bm{VW}_V)
+    \label{eq:video_encoder_att}
+\end{equation}
+where, $\Psi\left(\cdot\right)$ represents the layer normalization function.
+$\text{Cat}(\cdot)$ denotes vector concatenation and $\bm{W}_*$ are trainable parameters.
+We repeat the above process as many times as the number of encoder layers.
+The output of the video encoder is the output of the last layer $\bm{H}_v$ and $\bm{H}_c$, for the video and the caption, respectively.
+
+The attention-based feature fusing process is a mechanism used to align and fuse video context memory and caption context memory in order to determine the temporal region in a video that corresponds to the caption.
+This process involves several steps.
+To start, we have two sets of context memories: the video context memory represented as $\bm{H}_v$ and the caption context memory represented as $\bm{H}_c$.
+These context memories contain information about the video and caption, respectively.
+
+The first step in attention-based feature fusing is to achieve temporal dimension matching between these two sets of memories.
+This means that we want to make sure that both memories have the same dimensions and can be effectively compared.
+To achieve this matching, an attention pooling layer is employed.
+This layer computes attention weights for each element in the memories, effectively giving importance scores to each element.
+
+The formula used to calculate the attention weights is given as follows:
+\begin{equation}
+    \bm{a}_{i} = \frac{e^{w \cdot \bm{h}_i}}{\sum_{j=1}^{K}e^{w \cdot \bm{h}_j}}
+\end{equation}
+where, $\bm{a}_{i}$ represents the attention weight assigned to each element of memory $H$, denoted as $\bm{h}_i$.
+$w$ represents the attention weights, which are learnable parameters in the model.
+$K$ represents the number of dimensions in the output vector.
+This value is determined by the hidden dimension of the transformer hyperparameter ($K$ corresponds to the hidden dimension).
+Once we have computed these attention weights, we proceed to fuse the memories.
+The pooled memory, denoted as $\bm{H}_{pooled}$, is calculated by taking a weighted sum of the elements in the memory, where the weights are determined by the attention scores:
+\begin{equation}
+\bm{H}_{pooled} = \sum_{i=1}^{N}\bm{a}_i \cdot \bm{h}_i
+\end{equation}
+where, $\bm{H}_{pooled}$ represents the fused memory that combines information from both the video and caption context memories.
+Each element of this pooled memory is a weighted combination of the corresponding elements in the original memories, with the weights determined by the attention scores.
+
+Now, with the pooled video context memory $\bm{H}_{v,\text{pooled}}$ and caption context memory $\bm{H}_{c,\text{pooled}}$, we have effectively aligned and fused the information from both modalities.
+The final step in attention-based feature fusing is to compute the importance of the video context memory to the caption context memory.
+This importance score helps identify the temporal region in the video that corresponds to the caption, allowing the model to focus on relevant video features for localization.
+
+\iffalse
+In order to achieve temporal dimension matching between the video context memory $\bm{H}_v$ and caption context memory $\bm{H}_c$, we employ an attention pooling layer.
+This allows us to fuse the two memories effectively.
+\begin{equation}
+    \hleq
+    {\bm{a}_{i} = \frac{e^{w \cdot \bm{h}_i}}{\sum_{j=1}^{K}e^{w \cdot \bm{h}_j}}}
+\end{equation}
+In the given equation, $\bm{a}_{i}$ represents the weight assigned to each element of memory $H$, denoted as $\bm{h}_i$.
+$w$ represents the attention weights, and $K$ represents the number of dimensions in the output vector.
+\hl
+{$K$ corresponds to the hidden dimension of the transformer hyperparameter (refer to section~\ref{subsec:experiment_setup} for more information).}
+The pooled memory is calculated as follows:
+\begin{equation}
+    \bm{H}_{pooled} = \sum_{i=1}^{N}\bm{a}_i \cdot \bm{h}_i
+\end{equation}
+
+Given a pooled video context memory $\bm{H}_{v,\text{pooled}}$ and a caption context memory $\bm{H}_{c,\text{pooled}}$, we compute the importance of the video context memory to the caption context memory to find the temporal region where the caption corresponds to the video.
+We call this process attention-based feature fusing.
+This allows us to learn which video features the caption should be interested in for localization.
+\fi
+
+The last step in caption localization involves localizing the temporal region in the video that corresponds to the caption.
+This is done using anchor classification and delta regression techniques.
+The use of simple regression, as employed in the existing methods, may aid in achieving this task.
+However, it should be noted that this approach is prone to encountering local minima.
+To address this issue, the localization process is divided into two distinct steps: classification and refinement.
+The classification step aims to select the most appropriate one among several predefined anchors, and the refinement step aims at regression to compensate for the selected anchor.
+
+To do this, we adopt two fully connected layers, $\text{FC}_{\text{cls}}$ and $\text{FC}_{\text{reg}}$.
+We first identify the best anchor from a set of predefined anchors $S=\{e_1, e_2, \cdots, e_{N_a-1}\}$.
+\begin{equation}
+    \{o_i\}_{i=0}^{N_a} = \{ \text{FC}_{\text{cls}} \left( e_i \right) \}_{i=0}^{N_r}
+\end{equation}
+where $o_i$ means the classification logit for the $i$-th anchor.
+Then we formulate the index of best anchor $i^{(\text{best})}$ as follows.
+\begin{equation}
+    i^{(\text{best})} = \arg \max_{i} \{\text{MeteorScore}(o_i)\}_{i=0}^{N_a}
+\end{equation}
+where, the $\text{MeteorScore}(\cdot)$ function calculates the METEOR~\cite{Banerjee2005-zo} score of the caption generated for the anchor.
+We regress $\Delta w$ and $\Delta m$ to refine the final best anchor.
+\begin{equation}
+    \Delta w, \Delta m = \text{FC}_{\text{reg}} (e_{i^{(\text{best})}})
+\end{equation}
+We formulate the anchor that is finally selected, the anchor with the best score is $e^{(\text{best})}=(w_{i^{(\text{best})}}+\Delta w,m_{i^{(\text{best})}}+\Delta m)$.
+$w_{i^{(\text{best})}}$ and $m_{i^{(\text{best})}}$ are the width and center for the best anchor, respectively.
+
+\subsection{Event Captioning Module}
+The objective of the event captioning module is to provide a concise and informative sentence that describes an event, based on a video and its corresponding temporal region.
+To achieve this, we follow the established framework of the vanilla transformer~\cite{Vaswani2017-sc}.
+Specifically, we use a two-step process: first, we take a whole video and an associated event as inputs; second, we apply a mask to the temporal region of the video feature that corresponds to the event, and feed it into the transformer encoder. The last step involves allowing the visual context memory output, derived from the transformer encoder, to undergo cross-attention with the transformer's decoder.
+This process facilitates the generation of the relevant caption.
+
+We apply an event mask to the video and let $\bm{H}_v$ be the feature of the video after applying positional encoding, and the above process can be expressed as the following equations.
+\begin{equation}
+    \bm{H}^{l}_{self} = \Psi \left(H_v^l + \text{MA}\left( \bm{H}_v^l, \bm{H}_v^l, \bm{H}_v^l \right) \right)
+\end{equation}
+We denote the output of the last encoder layer, which is the video context memory, as $\bm{H}_v$, the decoding process of the transformer be represented as follows.
+\begin{equation}
+    \bm{H}^l_{cross} = \Psi \left( H_v + \text{MA}\left( \bm{H}^{l}_{self}, \bm{H}_v, \bm{H}_v \right) \right)
+\end{equation}
+\begin{equation}
+    \bm{H}_{cross}^{l+1} = \Psi \left( \bm{H}^{l}_{cross} + \text{FFN} \left( \bm{H}^{l}_{cross} \right) \right)
+\end{equation}
+We repeat the aforementioned process, where $\bm{H}_{cross}^{l+1}$ is set as $\bm{H}_c$ for the final layer.
+$\bm{H}_c$ is the output of the transformer decoder, which classifies a word from one of the vocabulary as the last to pass through the linear transformation as shown in Figure~\ref{fig:net_archi}.
+
+\subsection{Training Process}
+As described in Algorithm~\ref{algo:training_procedure}, the PWS-DVC training process involves two steps: pretraining and fine-tuning.
+During pretraining, the focus is on the event captioning module.
+Developing a solid language model can be a challenging task, as it requires a substantial text corpus.
+Therefore, we use a pretraining approach to generate descriptive sentences that describe the corresponding videos.
+This approach helps to achieve more accurate event localization.
+For pretraining, we use widely available video clip-level datasets such as MSR-VTT~\cite{Xu2016-ti} and MSVD~\cite{Chen2011-ai}.
+These datasets are ideal for pretraining the event captioning module because they are already trimmed to a short event level.
+To obtain video features, we pass a video through a C3D~\cite{Tran2015-uq} backbone, resulting in C3D features in 16 non-overlapped frames of the video.
+We then pass these video features through the event captioning module to train with the following loss function.
+\begin{equation}
+    \mathcal{L}_c=-\sum_{t=1}^{T_c} \bm{c}_t \cdot \log \left(\hat{\bm{c}}_t \mid \bm{c}_0: \bm{c}_{t-1}\right)
+    \label{eq:loss_ec}
+\end{equation}
+where, $\hat{\bm{C}}=\left\{\hat{\bm{c}}_i\right\}_{i=0}^{T_c}$ means the ground-truth caption, and $\bm{C}=\left\{\bm{c}_i\right\}_{i=0}^{T_c}$ means the prediction output by the event captioning module.
+
+Subsequently, we proceed with the process of fine-tuning using datasets such as the ActivityNet Captions dataset, which is specifically designed for dense video captioning tasks.
+The event captioning and caption localization modules are trained in an alternating manner.
+Although our method for weakly supervised dense video captioning has the potential to improve over multiple rounds of training, we focus on a single-round iteration, as depicted in Figure~\ref{fig:net_archi}.
+The equation denoted as Equation~(\ref{eq:loss_ec}) is employed for the event captioning module, and the following loss function is taken into account for caption localization.
+\begin{equation}
+    \mathcal{L}_l=\left[ \left( m^{\prime} - m^{\prime \prime}\right)^2 + \left( w^{\prime} - w^{\prime \prime} \right)^2 \right] + \left[ -\sum_{i=0}^{N_a} y_i \log p_i \right]
+    \label{eq:loss_cl}
+\end{equation}
+The first term is the L2 norm for regression on the center and width of the event, and the second term is the cross-entropy loss for anchor classification.
+Specifically, $m^{\prime}$ and $w^{\prime}$ refer to the center and length of $E^{\prime}$, and $m^{\prime \prime}$ and $w^{\prime \prime}$ refer to the centre and length of $E^{\prime \prime}$ in Figure~\ref{fig:net_archi}.
+For classification, we define a one-hot label $y = \{y_1, \cdots, y_{N_a} \}$ for the predefined anchors.
+If $y_i$ is 1, it indicates that the $i$-th anchor is the best, otherwise it is 0.
+$p = \{p_1, \cdots, p_{N_a} \}$ is the prediction of the caption localization module.
+
+
+\subsection{Inference}
+Since the PWS-DVC model lacks a direct training mechanism for dense video captioning, we explain the inference procedure.
+To conduct inference on a video $V$, we begin by selecting a set of random event anchors denoted as $\{E_i^{(a)}\}_{i=0}^{N_r}$, where $N_r$ is set to 15.
+Specifically, $N_r$ random numbers are selected from the interval $[0, 1]$ to represent the width and center of the anchors.
+Next, we combine them to obtain anchors consisting of pairs of $N_r$ widths and centers.
+After performing a single iteration for each event anchor, we obtain a set of refined events denoted as $\{S_i\}_{i=0}^{N_r}$.
+We filter the events based on their values with high temporal Intersection over Union (tIoU), retaining only those that meet the validity criteria.
+Finally, we input the filtered events into the event captioning module to provide captions for each event.
+
+
+\newcommand{\mc}[1]{\multicolumn{#1}}
+\begin{sidewaystable}
+% \begin{table*}[tp]
+    \centering
+    \caption{Dense event captioning performances (\%) of the proposed method and state-of-the-art methods on the ActivityNet Captions validation set. ``WS'' denotes ``weakly supervised''.}
+    \begin{tabular}{l|c|c|cccccccc}
+        \hline
+        \mc{1}{c|}{Method}         & WS     & Extra dataset & \mc{1}{c}{METEOR} & \mc{1}{c}{CIDEr} & \mc{1}{c}{ROUGE} & \mc{1}{c}{BLEU@1} & \mc{1}{c}{BLEU@2} & \mc{1}{c}{BLEU@3} & \mc{1}{c}{BLEU@4} & \mc{1}{c}{SODA\_c} \\ \hline
+        DCE~\cite{Krishna2017-pw}  & \xmark & \xmark        & 4.82              & 17.29            & -                & 17.95             & 7.69              & 3.86              & 2.20              \\
+        DVC~\cite{Li2018-ll}       & \xmark & \xmark        & 6.93              & 12.61            & -                & 12.22             & 5.72              & 2.27              & 0.73              \\
+        Bi-SST~\cite{Wang2018-ap}  & \xmark & \xmark        & 9.60              & 12.68            & 19.10            & 18.99             & 8.84              & 4.41              & 2.30              \\
+        MT~\cite{Zhou2018-zu}      & \xmark & \xmark        & 9.56              & -                & -                & -                 & -                 & 4.76              & 2.23              \\
+        SDVC~\cite{Mun2019-ap}     & \xmark & \xmark        & 8.82              & 30.68            & -                & 17.93             & 7.99              & 2.94              & 0.93              \\
+        PDVC~\cite{Wang2021-xe} & \xmark & \xmark &       7.50 & 47.26 & 2.64 & - & - & - & 1.65 & 5.26 \\
+        E2ESG~\cite{Zhang2022-ni} & \xmark & \xmark &       7.33 & 26.92 & - & - & - & - & 1.45 & 5.29 \\
+        Vid2Seq~\cite{Yang2023-fm} & \xmark & \xmark &       8.50 & 30.10 & - & - & - & - & - & 5.80 \\
+        \hline
+        MUTAN~\cite{Rahman2019-rp} & \cmark & \xmark        & 4.93              & 13.79            & 10.39            & 10.00             & 4.20              & 1.85              & 0.90              \\
+        WS-DEC~\cite{Duan2018-qf}  & \cmark & \xmark        & 6.30              & 18.77            & 12.55            & 12.41             & 5.50              & 2.62              & 1.27              \\
+        EC-SL~\cite{Chen2021-sv}   & \cmark & \xmark        & 7.49              & 21.21            & 13.02            & \textbf{13.36}    & 5.96              & 2.78              & 1.33              \\ \hline
+        PWS-DVC                    & \cmark & \cmark        & \textbf{8.22}     & \textbf{28.91}   & \textbf{13.80}   & 12.92             & \textbf{6.38}     & \textbf{3.11}     & \textbf{1.87} & \textbf{5.45}     \\ \hline
+    \end{tabular}
+    \label{tab:performance}
+% \end{table*}
+\end{sidewaystable}
+
+\section{Experimental Validation}
+
+\subsection{Experimental Setup}
+\label{subsec:experiment_setup}
+
+\textbf{Datasets.}
+The MSR-VTT dataset~\cite{Xu2016-ti} is used to pretrain the event captioning module.
+This comprehensive video benchmark dataset contains 10,000 web video clips, each accompanied by 20 annotations written by humans.
+A total of 200,000 clip-sentence pairings were used as samples for pretraining.
+Additionally, we employ temporal augmentation techniques to increase the number of samples from 200K to 1M.
+
+For dense video captioning, we use the ActivityNet Captions~\cite{Krishna2017-pw} dataset, which comprises 20K untrimmed videos capturing various human activities.
+On average, videos have a duration of 120 seconds and contain an average of 3.7 events.
+While other datasets exist for dense video captioning, such as YouCook2~\cite{Zhou2018-eq} and ViTT~\cite{Huang2020-as}, we focus exclusively on the ActivityNet Captions dataset for the purpose of comparing with current weakly dense video captioning algorithms.
+
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/pws_exp_qualitative}
+    \caption{Examples of the output of PWS-DVC for two videos from the ActivityNet Captions validation set.}
+    \label{fig:qualitative}
+\end{figure*}
+
+
+
+
+\textbf{Evaluation metrics.}
+The publicly accessible evaluation code supplied by the ActivityNet Captions Challenge is utilized in our study\footnote{\url{https://github.com/ranjaykrishna/densevid_eval}}.
+The evaluation metrics employed in this paper include recall and precision for event localization, as well as METEOR~\cite{Banerjee2005-zo}, CIDEr~\cite{Vedantam2015-ma}, and BLEU~\cite{Papineni2002-sn} for sentence evaluation.
+The computation of the captioning score for a generated event and sentence pair is contingent upon the presence of an overlap greater than the specified threshold with any ground-truth events.
+This score is determined by comparing the related sentence from the ground-truth data.
+Alternatively, if the conditions are not met, the score is assigned a value of zero.
+
+We adopt SODA~\cite{Fujita2020-ob} as an additional evaluation metric.
+Recently, SODA has been introduced for evaluating multi-sentence captioning tasks, particularly in the context of dense video captioning.
+The SODA metric considers the coherence and narrative flow between sentences.
+It is derived from the METEOR metric, but penalizes the use of redundant words, phrases, and sentences.
+This feature enhances its ability to resist over-evaluation, as it discourages inflated scores through excessive repetition.
+
+\textbf{Implementation details.}
+The event captioning module and caption localization module of PWS-DVC are based on the transformer architecture.
+We follow the hyper-parameters of the original transformer~\cite{Vaswani2017-sc}, including a model dimension of 512, 8 encoders and decoders, and a feed-forward dimension of 2048.
+We set the dropout rate to 0.1.
+
+To train PWS-DVC, we use the AdamW~\cite{Loshchilov2017-sm} optimizer in both the pretraining and fine-tuning stages.
+In the pretraining stage, we gradually decrease the learning rate according to a cosine function with a warm-up period that increases up to 5e-4.
+In the fine-tuning stage, we train for 30 epochs using a batch size of 8 with a learning rate of 1e-4.
+
+The examination of various hyperparameters' influence on the model is crucial in deep learning frameworks.
+Our extensive exploration indicates that PWS-DVC is robust to different hyperparameters, meaning that the improvement in performance with better hyperparameter settings is minimal.
+Instead of aiming for improved outcomes, we adhere to widely adopted settings to ensure fairness when comparing with baseline methods.
+
+
+\subsection{Performance Comparison}
+We conduct extensive comparisons with existing state-of-the-art methods to demonstrate the effectiveness of PWS-DVC. Besides the dense video captioning benchmark dataset, ActivityNet Captions, we also compare the performance with video-clip captioning methods and compare the performance of caption localization with temporal action localization models.
+
+\textbf{Dense video captioning.}
+Table~\ref{tab:performance} compares the dense video captioning performance on the ActivityNet Captions validation set.
+The results show that PWS-DVC achieves the best performance on weakly supervised dense video captioning methods for METEOR, CIDEr, ROUGE, and BLEU, and comparable performance on fully supervised methods.
+Specifically, PWS-DVC achieves state-of-the-art performance on almost all metrics compared to the weakly supervised approaches MUTAN, WS-DEC, and EC-SL.
+These results suggest that PWS-DVC's pretraining approach contributes to both localization and captioning by improving the performance of the event captioning module.
+Table~\ref{tab:performance} also compares PWS-DVC with several methods trained under weakly supervised as well as fully supervised conditions.
+PWS-DVC performs comparably to them despite being trained without information about ground-truth events.
+
+\begin{table}[tp]
+    \centering
+    \caption{Temporal event localization performances of PWS-DVC and state-of-the-art methods on the ActivityNet Captions dataset.
+        The top-1 recall is quantified by evaluating the overlap between the predicted temporal event and the ground truth across various temporal IoU thresholds.
+        The abbreviation ``WS'' is used to represent the term ``weakly supervised''.
+    }
+    \begin{tabular}{l|c|c|ccc}
+        \hline
+        \multicolumn{1}{c|}{Method} & WS     & Pretrain & tIoU=0.1 & tIoU=0.3 & tIoU=0.5 \\ \hline
+        CTRL~\cite{Gao2017-ij}      & \xmark & \xmark   & -        & 47.43    & 29.01    \\
+        ABLR~\cite{Yuan2019-zc}     & \xmark & \xmark   & 73.30    & 55.67    & 36.79    \\
+        2D-TAN~\cite{Zhang2020-rm}  & \xmark & \xmark   & -        & 58.75    & 44.05    \\
+        FIAN~\cite{Qu2020-dg}       & \cmark & \xmark   & -        & 64.10    & 47.90    \\ \hline
+        WSLLN~\cite{Gao2019-kd}     & \cmark & \xmark   & 75.40    & 42.80    & 22.70    \\
+        LCGB~\cite{Chen2020-fu}     & \cmark & \xmark   & 74.20    & 44.30    & 23.60    \\
+        SCN~\cite{Duan2018-qf}      & \cmark & \xmark   & 71.48    & 47.23    & 29.22    \\ \hline
+        WS-DEC~\cite{Duan2018-qf}   & \cmark & \xmark   & 62.71    & 41.98    & 23.34    \\
+        EC-SL~\cite{Chen2021-sv}    & \cmark & \xmark   & 68.48    & 44.29    & 24.16    \\ \hline
+        PWS-DVC                     & \cmark & \cmark   & 70.01    & 51.94    & 27.70    \\ \hline
+    \end{tabular}
+    \label{tab:localization}
+\end{table}
+
+
+\begin{table}[tp]
+    \centering
+    \begin{tabular}{l|ccc}
+        \hline
+        \multicolumn{1}{c|}{Method}                   & \multicolumn{1}{c}{BLEU@4} & \multicolumn{1}{c}{CIDEr} & \multicolumn{1}{c}{METEOR} \\ \hline
+        FSTA~\cite{Liu2018-pg}                        & 39.80                      & 41.1                      & 26.50                      \\
+        OA-BTG~\cite{Zhang2019-kb}                    & 41.40                      & 46.9                      & 28.20                      \\
+        MGSA~\cite{Chen2019-po}                       & 42.40                      & 47.5                      & 27.60                      \\
+        POS+CG~\cite{Wang2019-dh}                     & 42.00                      & 48.7                      & 28.20                      \\
+        POS+VCT~\cite{Hou2019-ox}                     & 42.30                      & 49.1                      & 29.70                      \\
+        SAM-SS~\cite{Chen2020-di}                     & 43.80                      & 53.2                      & 28.90                      \\
+        ORG-TRL~\cite{Zhang2020-rl}                   & 43.60                      & 50.9                      & 28.80                      \\
+        STraNet~\cite{Zhang2020-rl}                   & 43.60                      & 50.9                      & 28.80                      \\
+        VNS-GRU~\cite{Chen2020-iy}                    & 45.30                      & 53.0                      & 29.90                      \\
+        ARB~\cite{Yang2021-xf} + ACL~\cite{Li2022-uh} & 42.60                      & 51.3                      & 28.90                      \\
+        MFVCG~\cite{Bhooshan2022-ex}                  & 44.90                      & 52.2                      & 29.80                      \\ \hline
+        PWS-DVC                                       & 41.20                      & 49.3                      & 26.99                      \\ \hline
+    \end{tabular}
+    \caption{Comparison to state-of-the-art methods on MSR-VTT for video clip captioning.}
+    \label{tab:clip-captioning}
+\end{table}
+
+% \begin{table*}[tp]
+\begin{sidewaystable}
+    \centering
+    \begin{tabular}{c|l|cccc}
+        \hline
+        \# & \multicolumn{1}{c|}{Method}                              & METEOR & CIDEr & ROUGE & BLEU@4 \\ \hline
+        1  & PWS-DVC without pretraining                              & 5.49   & 13.77 & 10.02 & 0.72   \\
+        2  & PWS-DVC pretrained on ActivityNet Captions               & 7.28   & 20.59 & 12.71 & 1.35   \\
+        3  & PWS-DVC pretrained on MSR-VTT                            & 8.05   & 27.11 & 13.17 & 1.80   \\ \hline
+        4  & PWS-DVC pretrained on MSR-VTT with temporal augmentation & 8.22   & 28.91 & 13.80 & 1.87   \\ \hline
+    \end{tabular}
+    \caption{The results of ablation study.}
+    \label{tab:ablation}
+% \end{table*}
+\end{sidewaystable}
+
+\textbf{Caption localization.}
+We then evaluate the performance of caption localization on the validation set of ActivityNet Captions.
+We compare the weakly supervised dense video captioning methods WS-DEC and EC-SL with state-of-the-art models for temporal action localization tasks, such as CTRL and ABLR.
+Table~\ref{tab:localization} shows that the PWS-DVC approach achieves superior accuracy in caption localization compared to existing weakly supervised dense video captioning methods WS-DEC and EL-SL.
+Despite the fact that existing temporal action localization methods are trained on ground-truth events, the caption localization performance of PWS-DVC is comparable.
+These results demonstrate that PWS-DVC's approach is not only effective in improving the event captioning module, but also in improving caption localization.
+
+\textbf{Video clip captioning.}
+The event captioning module of PWS-DVC generates a single sentence from a video clip, which is itself the purpose of video-clip captioning.
+We demonstrate the effectiveness of our event captioning module not only for dense video captioning, but also by comparing it with existing video clip captioning methods on the MSR-VTT video clip dataset.
+Table~\ref{tab:clip-captioning} shows the performance comparison of PWS-DVC's event captioning module with state-of-the-art video clip captioning methods.
+While video clip captioning methods have various advantages such as multimodal, pretraining, and object detection, PWS-DVC follows the architecture of a vanilla transformer in terms of model architecture and modality.
+Nevertheless, the event captioning module of PWS-DVC shows comparable performance to existing state-of-the-art video clip captioning methods.
+
+\subsection{Qualitative Results}
+Figure~\ref{fig:qualitative} presents the qualitative outcomes of PWS-DVC.
+We select two videos from the validation set of ActivityNet Captions, and show their corresponding events and captions together.
+Through the examination of these two instances, it is demonstrated that PWS-DVC has the capability to effectively generate events and captions even in the absence of ground-truth events.
+Furthermore, PWS-DVC produces descriptive sentences by utilizing the event captioning module that has been pretrained on a video clip dataset.
+Additionally, it accurately identifies the location of each sentence inside the video scene.
+In the first video, PWS-DVC produces sentences that incorporate certain keywords, such as ``green field,'' ``running,'' and ``lacrosse,'' while also accurately identifying the precise location within the video scene for each sentence.
+This holds for the second video as well.
+
+Note that the outcomes of PWS-DVC do not align with the ground-truth events and captions.
+However, this is a reasonable observation considering the inherent non-deterministic character of the dense video captioning task, as depicted in Figure~\ref{fig:nondeterminism}.
+
+\subsection{Ablation Study}
+To demonstrate the efficacy of pretraining the event captioning module, which serves as the core approach of PWS-DVC, we conduct an intensive ablation experiment involving different pretraining.
+We train four different variants of PWS-DVC, each with varying levels of pretraining: (i) PWS-DVC without pretraining, (ii) PWS-DVC pretrained using only the ActivityNet Captions dataset without any extra dataset, (iii) PWS-DVC pretrained on MSR-VTT but without temporal augmentation, and (iv) PWS-DVC pretrained on MSR-VTT with temporal augmentation.
+We present the performance of the four distinct PWS-DVC models on the ActivityNet Captions validation set in Table~\ref{tab:ablation}.
+It is evident that models that have undergone pretraining on ActivityNet Captions or MSR-VTT exhibit superior performance compared to model \#1.
+This observation indicates that pretraining is highly effective in the context of weakly supervised dense video captioning approaches.
+Furthermore, it is evident that the incorporation of extra datasets, such as MSR-VTT, with the ActivityNet Captions dataset, yields enhanced performance outcomes.
+This is attributed to the augmented diversity of the training sample.
+By the same principle, the temporal augmentation serves to enhance the diversity of the training dataset, hence resulting in model \#4 attaining the highest level of performance.

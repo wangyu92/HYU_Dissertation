@@ -1,0 +1,433 @@
+% !TeX root = main.tex
+
+\chapter{Gradual Pathway: Step-by-Step Approach for Event Localization and Captioning}
+\label{chap:gradual_pathway}
+
+\section{Motivation and Rationale}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=1\textwidth]{figures/sbs_intro_overview.pdf}
+  \caption{
+    Comparison between the existing methods and ours for dense video captioning.
+    Similar to human interpretation, the proposed algorithm first scans a given video and explicitly determines the number of events.
+    It then generates events by specifying the start and end timestamps of the salient region based on the number of events.
+    Finally, it describes a specific sentence for each event region.
+    On the other hand, existing methods generate a large number of event proposals and then remove duplicates with a han-crafted algorithm such as NMS.\@
+    This makes it difficult to detect different events (i.e., actions) in the same time period.
+  }
+  \label{fig:intro_overview}
+\end{figure*}
+The advent of large-scale video activity datasets~\cite{karpathy2014large,caba2015activitynet,kay2017kinetics} has made significant progress in video captioning tasks, which aims to generate sentences describing activity in short videos~\cite{venugopalan2015sequence,venugopalan2015translating,yao2015describing,pan2016hierarchical,pan2016jointly,baraldi2017hierarchical,gan2017semantic,pan2017video,yu2017end,wang2018reconstruction,zhu2020understanding,bhooshan2022multimodal,li2022adaptive}.
+However, real-world videos such as video surveillance are generally untrimmed and contain multiple stories that overlap in time, therefore describing the video in a single sentence is insufficient and does not provide all the necessary information.
+To overcome the above-mentioned shortcomings, dense video captioning has recently emerged to describe the video in complexity and detail.
+
+The dense video captioning task is conceptually very challenging because it is required to detect multiple salient temporal regions (i.e., events) that overlap in untrimmed video.
+Most of the existing work adopts an approach that divides captioning task into two sub-tasks, event localization and event captioning.
+It then sequentially constructs the two sub-tasks from the encoded video, either bottom-up~\cite{krishna2017dense,li2018jointly,wang2018bidirectional,zhou2018end,mun2019streamlined} or top-down~\cite{deng2021sketch}.
+Despite these efforts, there are still limitations to accurately localizing overlapping events in video.
+In particular, the bottom-up approach (i.e., localize-then-describe) generates numerous event proposals~\cite{fujita2020soda} from the extracted temporal video features and eliminates them with a hand-crafted algorithm such as non-maximum suppression (NMS) algorithm.
+A simple temporal feature is insufficient to detect overlapping events, and NMS algorithm tends to eliminate overlapping events despite having different activities.
+In contrast, the top-down approach, that localizes after generating a paragraph from a video, is usually difficult to generate multiple sentences for the same temporal region.
+The undetectability of overlapping events hinders the multi-story video description.
+
+Figure~\ref{fig:intro_overview} shows an example of the difference between the existing methods and our method.
+Existing methods are an example of a bottom-up approach that has been widely used.
+They generate a number of proposals from the video and then consider their start and end timestamps to remove duplicates regardless of the video's content.
+In other words, when there are multiple actions in the same temporal region, they cannot distinguish them and leave only one.
+On the other hand, our method is an approach considering video content.
+We first scan the video and determine the number of actions in each temporal region.
+We then estimate the exact boundary for each event and generate final event proposals.
+Consequently, ours is a flexible framework for overlapping proposals.
+
+We observed several key factors in dense video captioning task that affect both the event localization and event captioning.
+%For high-quality event localization and concise, relevant, and coherent event captioning, there are several key factors to consider in dense video captioning task. 
+Unlike simple temporal action localization~\cite{yuan2017temporal,lin2018bsn,long2019gaussian,lin2019bmn,zhao2020bottom} without event overlapping, video frame in dense video captioning contains multiple overlapping events, so the event localization module needs to detect an explicit event count.
+In addition, algorithms used for event proposal selection, such as NMS, use only start and end timestamps without considering the content, and hence they unnecessarily remove information.
+In captioning subtask, understanding the context between events at a high level is essential to ensure concise, relevant, and coherent sentence generation in event captioning.
+
+Inspired by the observations mentioned above, we propose a framework for dense video captioning, SBS, which is a gradual approach from abstract to detail.
+As depicted in Figure~\ref{fig:intro_overview}, procedures in SBS consists of five steps as follows.
+First, it estimates the \textit{number of events} in the temporal domain from the encoded features.
+Unlike binary classification such as positive or negative for actionness, the explicit number of events is effective for localizing overlapping events as it provides the maximum number of overlapping events in the corresponding temporal region.
+Second, SBS detects the \textit{boundaries of events} in the temporal domain for additional information in order to generate event proposals.
+This step detects changes in the video scene (e.g., appearance of an object/start and end of an action) to accurately determine the start and end of an event.
+Third, SBS generates a set of event proposals contained in the video using the number of events and their boundaries by introducing an \textit{actionness-weighted tIoU algorithm} without any proposal selection algorithms.
+Fourth, SBS \textit{encodes the context} of generated event proposals to ensure coherence between sentences before generating a sentence for events.
+Finally, it \textit{constructs sentences} using the encoded context for the event proposals.
+In other words, SBS' captioning network consists of two-level RNNs (i.e., context encoder and sentence decoder), which guarantees sentence fluency and coherence between sentences in the video.
+
+The rest of the paper is organized as follows.
+We first discuss related work in Section~\ref{sec:relwork}.
+The proposed method and its training methodology are described in Sections~\ref{sec:method} and~\ref{sec:training}, respectively.
+We evaluate our framework in Section~\ref{sec:experiment}, and conclude the paper in Section~\ref{sec:conclusion}.
+
+
+
+\section{Step-by-Step (SBS) Framework}
+
+%In this section, we describe the core idea of SBS, dense video captioning framework.
+\subsection{Overview}
+\label{subsec:method_overview}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=1\textwidth]{figures/sbs_design_overview.pdf}
+  \caption{
+    Summary of procedures in SBS.\@
+    (1) Video encoder: Given a video, SBS first extracts the spatiotemporal video features using the C3D networks.
+    The transformer encoder encodes the C3D features with long-range temporal dependency.
+    (2) Temporal event counter: The first step for event localization is to estimate the explicit number of events by taking the encoded video as input.
+    (3) Temporal boundary classifier: To accurately localize the start and end of the event, the next step is to classify the boundaries of the events in the timeline.
+    (4) Event proposal generation: The algorithm generates event proposals from the acquired event count and boundaries without an event selection algorithm.
+    (5) Context-level event encoder: A context-level event encoder composed of a single LSTM takes a sequence of event proposals as input and outputs the context-encoded hidden state.
+    (6) Sequential event captioner: Finally, the sequential event captioner outputs each word together with the context feature.
+  }
+  \label{fig:method_overview}
+\end{figure*}
+
+An overview of SBS is depicted in Figure \ref{fig:method_overview}.
+SBS consists of six modules: (1) video encoder, (2) temporal event counter, (3) temporal boundary classifier, (4) event proposal generator, (5) context-level event encoder, and (6) sequential event captioner.
+Given a video $V$, it first composes a sequence of snippets with the video encoder.
+It then uses a temporal event counter network to estimate the number of overlapping events in the timestamp corresponding to each snippet.
+For detailed localization of video segments, it detects the start and end boundaries for each event and generates event proposals along with the number of events.
+The next step is to generate a sentence for each event proposal.
+To improve coherence between sentences, we construct the captioning networks in two steps.
+It converts the video segments corresponding to each proposal into context-level representations.
+Finally, it generates sentences using the context-level representations.
+
+\subsection{Video Encoder}
+\label{subsec:method_video_encoder}
+
+For a given video $V$, we divide the video into non-overlapping, fixed-length (i.e., 8 frames) snippets $V=\{v_n\}$.
+The goal of the video encoder is to extract the hidden states $\mathbi{H}_v$ for all snippets.
+Our video encoder consists of a CNN backbone and a sequential data encoder(e.g., RNN).
+Specifically, we adopt the C3D network \cite{tran2015learning} and the transformer encoder \cite{vaswani2017attention} with multi-head attention (MA) in consideration of their efficiency and performance.
+C3D network is a widely used pre-trained video feature extractor and the transformer encoder allows encoding of long-range dependencies (The maximum length of video included in the dataset is 2,827 $\times$ 8 seconds. Details are described in Section \ref{subsec:exp_dataset}).
+In SBS, C3D networks take each snippet as input and extract features $\mathbi{F}_v \in \mathbb{R}^{T \times d_f}$, where $T$ is the number of snippets and $d_f$ is the dimension of features.
+We apply up/down sampling with the nearest-neighbor interpolation algorithm to feed the video feature $\mathbi{F}_v$ of dimension $d_f$ to the transformer encoder of dimension $d_m$:
+\begin{equation}
+  \mathbi{H}_v^0 = \mathcal{I}_{nearest} \left( \mathbi{F}_v \right)
+  \label{eq:linear_transformation}
+\end{equation}
+Then, starting with the input $\mathbi{H}_v^0$, it iteratively injects the output of the layers as many as the number of encoder layers (multi-head attention) into the input.
+%is repeatedly injected into the input by as many as the number of encoder layers (multi-head attention):
+\begin{equation}
+  \mathbi{H}_v^{l+1} = \text{FFN}\left(\Psi \left(H_v^l + \text{MA}\left( \mathbi{H}_v^l, \mathbi{H}_v^l, \mathbi{H}_v^l \right) \right)\right)
+  \label{eq:video_encoder_self_attention}
+\end{equation}
+\begin{equation}
+  \text{FFN}(x) = \text{max} \left(0, x\mathbi{W}_1 + b_1 \right)\mathbi{W}_2 + b_2,
+  \label{eq:video_encoder_feed_forward}
+\end{equation}
+where $\Psi\left(\cdot\right)$ represents the layer normalization function.
+Finally, the output of video encoder is the output of the last layer $\mathbi{H}_v$.
+
+\subsection{Temporal Event Counter}
+\label{subsec:method_temporal_event_counter}
+The goal of the temporal event counter is to accurately estimate the number of events contained in given video snippets.
+Toward this, we employ multiple temporal 1D convolutional layers to capture the dependency of temporal range.
+Temporal convolutional layer is denoted as $Conv(c_n, c_k, c_s)$, where $c_n$, $c_k$, and $c_s$ are the number of filters, kernel size, and stride of temporal convolutional layer, respectively.
+As shown in Figure \ref{fig:method_overview}, we define three types of temporal convolutional layers to consider different ranges of snippets: (i) $Conv(512, 2, 1)$, (ii) $Conv(512, 10, 5)$ and (iii), $Conv(512, 20, 10)$.
+One snippet has a duration of about 0.27 seconds, so the kernel sizes of temporal convolutional layers are 0.53, 2.67, and 5.33 seconds.
+We stack the outputs of each layer in temporal alignment at the channel level.
+The average pooling layer outputs the probability for the number of events that correspond to the snippet.
+We call this probability an event counter table.
+The event counter table can be denoted as $P_c = \{p_{l,n}^c\}_{l=1,n=0}^{L, N-1}$, where $L$ and $N$ are the length of input snippets and the maximum number of overlapping events, respectively.
+The whole process can be represented:
+\begin{align}
+  \mathbi{F}_{narrow} & = Conv_{(512, 2, 1)} (\mathbi{H}_v)                               \\
+  \mathbi{F}_{mid}    & = Conv_{(512, 10, 5)} (\mathbi{H}_v)                              \\
+  \mathbi{F}_{wide}   & = Conv_{(512, 20, 10)} (\mathbi{H}_v)                             \\
+  \mathbi{F}_{all}    & = Stack(\mathbi{F}_{narrow}, \mathbi{F}_{mid}, \mathbi{F}_{wide}) \\
+  P_c                 & = AvgPool(\mathbi{F}_{all}, N),
+\end{align}
+where $Stack(\cdot)$ is a function that concatenates vectors with temporal alignment at the channel level.
+$AvgPool(\cdot)$ is an average pooling function with input vectors and output size.
+We set $N$ to 15 by adding the probability of no event probability (i.e., background snippet) to the maximum number of overlapping events of 14.
+
+Our temporal event counter has clear advantages in localizing the multiple overlapping events.
+Specifically, it eliminates the need for the non-maximum suppression (NMS) algorithm by explicitly detecting the number of events (i.e., salient region or interval) taking into account the spatiotemporal context of the video.
+The NMS algorithm enforces a tradeoff between recall and precision because it is fully hand-crafted and operates with a single, fixed threshold~\cite{hosang2017learning}.
+Our temporal event counter helps to determine the boundaries of events later.
+
+\subsection{Temporal Boundary Classifier}
+\label{subsec:method_temporal_boundary_classifier}
+
+In the previous step, we detected snippets containing salient actions and estimated their number with the temporal event counter, however the number of events is not sufficient to generate the complete events (i.e., there are multiple cases).
+To converge these into one case, we introduce an additional module, temporal boundary classifier.
+The goal of the temporal boundary classifier is to detect the boundary (i.e., start, end or both) of an event given a snippet.
+To this end, we adopt a two-stream architecture (shown in Figure~\ref{fig:method_overview}) where the first one reuses convolutional layers with fixed parameters of the temporal event counter, and the second one employs multiple dense (i.e., small size of kernel and stride) temporal 1D convolutional layers.
+Our intuition is that the temporal boundary classifier extracts actionness and boundary features from a sequence of snippets to localize the exact start and end timestamps of an event.
+The subsequent process is the same as the temporal event counter, but for each snippet, it outputs the start and end probability $P_b = \{(p_{l,s}^b, p_{l,e}^b)\}_{l=1}^{L}$.
+We refer to $P_b$ as an event boundary table.
+
+\subsection{Event Proposal Generation}%
+\label{subsec:method_event_proposal_generation}
+We have obtained the event counter table and event boundary table in Sections~\ref{subsec:method_temporal_event_counter} and~\ref{subsec:method_temporal_boundary_classifier}.
+Next, SBS uses these two tables to generate event proposals.
+
+Our event proposal generation starts from the event counter table $P_c$ and event boundary table $P_b$ obtained in sections 3 and 4. We recall them as follows:
+$$
+  P_c = \{p_{l,n}^c\}_{l=1,n=1}^{L, N-1}
+$$
+$$
+  P_b = \{(p_{l,s}^b, p_{l,e}^b)\}_{l=1}^{L}
+$$
+Then, we create a 1D actionness table $T_a$ from $P_c$.
+We can compute the score value for actionness as the sum of the product of the probability of the corresponding event count and the event count itself in each snippet slot using the following formula:
+\begin{align}
+  T_{a} = \left[ \sum_{n=0}^{N-1} n \cdot p_{l,n}^c \right]_{l=1}^L
+\end{align}
+Next, we generate candidate event proposals by constructing all possible start-end pairs from the event boundary table $P_b$.
+\begin{align}
+  \hat{E} = \{(\iota_s, \iota_e) \mid \iota_s < \iota_e, p_{\iota_s,s}^b \geq 0.5, p_{\iota_e,e}^b \geq 0.5\}
+\end{align}
+where, $\iota_s$ and $\iota_e$ are the start and end index of the event proposal, respectively, meaning all possible pairs consisting of start and end.
+We then select meaningful proposals from the candidate proposals $\hat{E}$.
+To do this, we utilize the previously computed actionness score $T_a$.
+Specifically, we choose the final event proposal whose average score for all slots corresponding to the proposal is greater than 1.
+We calculate the actionness score for candidate proposals using the following equation:
+$$
+  S = \frac{ \sum_{i=\iota_s}^{\iota_e} T_a\left[ i \right] }{\iota_e - \iota_s}
+$$
+
+Our event proposal generation algorithm has several advantages over the traditional method of generating a large number of proposals and then removing duplicates.
+First, it selects event proposals considering the content, ensuring meaningful events are maintained.
+In contrast, algorithms that ignore content, such as NMS, simply determine duplicates based on tIoU, potentially removing important proposals.
+Second, it is computationally efficient as it does not generate a large number of event proposals.
+Furthermore, it generates event proposals with just a single forward pass.
+
+\subsection{Sentence Generation}
+Our sentence generation module consists of two steps: encoding the context and captioning the sequential events.
+Before generating words/sentences directly from the event proposals, we encode the context of event proposals for concise and coherent sentences with the context-level event encoder.
+The sequential event captioner then generates sentences with the encoded context.
+As shown in Figure \ref{fig:method_overview}, we employ two LSTMs, which are denoted as $\text{LSTM}_c$ and $\text{LSTM}_s$ for the context-level event encoder and the sequential event captioner, respectively.
+The context-level event takes the video feature $\mathbi{F}_v \in \mathbb{R}^{T \times d_f}$ corresponding to the event proposals and encodes the context for a sequence of events, where $T$ is the duration of the event proposal.
+The sequential event captioner generates word by word while maintaining the context event for other sentences in the same video by leveraging the encoded context.
+Given $t$-th event proposal $e_t$, this process is formulated as follows:
+\begin{align}
+  r_t & = \text{LSTM}_c(F_v(e_t), g_{t-1}, r_{t-1}) \\
+  g_t & = \text{LSTM}_s(F_v(e_t), r_t, g_{t-1}),
+\end{align}
+where $r_t$ is the encoded context feature of $t$-th event proposal, and $F_v(\cdot)$ is a function that outputs the video features corresponding to the input event proposal.
+
+\section{Experimental Results and Discussion}
+
+\begin{sidewaystable}
+% \begin{table}[t]
+  \centering
+  \caption{
+    Performance comparison of the event localization with respect to the 4 temporal intersection of unions (@tIoU) thresholds on the Activity Captions validation set.
+  }
+  \begin{tabular}{@{}l|ccccc|ccccc|c@{}}
+    \hline
+    \multirow{2}{*}{Method}        & \multicolumn{5}{|c|}{Recall (@tIoU)} & \multicolumn{5}{|c|}{Precision (@tIoU)} & \multirow{2}{*}{F1}                                                                     \\
+                                   & @0.3                                 & @0.5                                    & @0.7                & @0.9  & Average & @0.3  & @0.5  & @0.7  & @0.9  & Average &       \\
+    \hline
+    MFT \cite{xiong2018move}       & 46.18                                & 29.76                                   & 15.54               & 5.77  & 24.31   & 86.34 & 68.79 & 38.30 & 12.19 & 51.41   & 33.01 \\
+    SDVC \cite{mun2019streamlined} & 93.41                                & 76.40                                   & 42.40               & 10.10 & 55.58   & 96.71 & 77.73 & 44.84 & 10.99 & 57.57   & 56.56 \\
+    PDVC \cite{wang2021end}        & 89.47                                & 81.91                                   & 44.63               & 15.67 & 55.42   & 97.16 & 78.09 & 42.68 & 14.40 & 58.07   & 56.71 \\
+    PPVC \cite{choi2022parallel}   & 91.71                                & 78.90                                   & 56.73               & 20.60 & 61.98   & 96.23 & 73.80 & 37.66 & 12.61 & 55.07   & 58.33 \\
+    Vid2Seq \cite{yang2023vid2seq} & -                                    & -                                       & -                   & -     & 52.7    & -     & -     & -     & -     & 53.9    & 53.29 \\
+    \textbf{SBS}                   & 93.14                                & 82.29                                   & 45.70               & 15.88 & 59.25   & 96.85 & 79.68 & 43.56 & 11.47 & 57.89   & 58.56 \\
+    \hline
+  \end{tabular}
+  \label{tab:eval_event_localizer}
+% \end{table}
+\end{sidewaystable}
+
+% \begin{table*}[t]
+\begin{sidewaystable}
+  \centering
+  \caption{
+    A summary of the performance comparison using BLEU, CIDEr and METEOR on the ActivityNet validation set.
+    We present the performances obtained from both learned and ground-truth events.
+    Asterisk (*) indicates methods evaluated on incomplete dataset (e.g., 80\%) due to download issues.
+    CE and RL stand for cross-entropy and reinforcement learning, respectively.
+  }
+  \begin{tabular}{@{}l|c|cc|ccc|ccc@{}}
+    \hline
+    \multirow{2}{*}{Method}             & \multirow{2}{*}{Pretrained} & \multicolumn{2}{|c|}{Training} & \multicolumn{3}{|c|}{with GT proposals} & \multicolumn{3}{c}{with predicted proposals}                                                 \\
+                                        &                             & CE                             & RL                                      & BLEU                                         & CIDEr   & METEOR  & BLEU   & CIDEr   & METEOR \\
+    \hline
+    DCE \cite{krishna2017dense}         &                             & $\checkmark$                   &                                         & 1.60                                         & 25.12   & 8.88    & 0.71   & 12.43   & 5.69   \\
+    MFT \cite{xiong2018move}            &                             & $\checkmark$                   &                                         & 1.24                                         & 21.00   & 7.08    & 1.15   & 9.25    & 4.98   \\
+    TDA-CG \cite{wang2018bidirectional} &                             & $\checkmark$                   &                                         & -                                            & -       & -       & 1.31   & 7.99    & 5.86   \\
+    DVC \cite{li2018jointly}            &                             & $\checkmark$                   &                                         & 1.62                                         & 25.24   & 10.33   & 0.73   & 12.61   & 6.93   \\
+    Efficient \cite{suin2020efficient}  &                             & $\checkmark$                   &                                         & -                                            & -       & -       & 1.35   & 13.82   & 6.21   \\
+    % MT \cite{zhou2018end}               & TSN & $\checkmark$ & & 2. &&& 1.15 & 9.25 & 4.98  \\
+    SDVC \cite{mun2019streamlined}      &                             & $\checkmark$                   & $\checkmark$                            & 1.28                                         & 47.71   & 13.07   & 0.93   & 30.68   & 8.82   \\
+    ECHR \cite{wang2020event}           &                             & $\checkmark$                   &                                         & 1.96                                         & 39.73   & 10.58   & 1.29   & 14.71   & 7.19   \\
+    WS-DEC \cite{chen2021towards}*      &                             & $\checkmark$                   &                                         & -                                            & -       & -       & 1.33   & 21.21   & 7.49   \\
+    SGR \cite{deng2021sketch}           &                             & $\checkmark$                   & $\checkmark$                            & -                                            & -       & -       & 1.67   & 22.12   & 9.07   \\
+    PDVC \cite{wang2021end}             &                             & $\checkmark$                   &                                         & 2.64                                         & 47.26   & 10.54   & 1.65   & 25.87   & 7.50   \\
+    {MV-GPT \cite{seo2022end}}          & \checkmark                  & {\checkmark}                   & {}                                      & {6.84}                                       & {-}     & {12.31} & {-}    & {-}     & {-}    \\
+    {PPVC \cite{choi2022parallel}}      & {}                          & {{\checkmark}}                 & {}                                      & {2.76}                                       & {49.31} & {10.48} & {1.68} & {23.02} & {7.91} \\
+    {Vid2Seq \cite{yang2023vid2seq}}    & {\checkmark}                & {{\checkmark}}                 & {}                                      & {-}                                          & {-}     & {-}     & {-}    & {30.1}  & {8.5}  \\
+    \textbf{SBS}                        &                             & $\checkmark$                   & $\checkmark$                            & 1.22                                         & 41.82   & 14.27   & 1.08   & 27.92   & 9.05   \\
+    \hline
+  \end{tabular}
+  \label{tab:eval_captioner}
+\end{sidewaystable}
+% \end{table*}
+
+\subsection{Dataset}
+\label{subsec:exp_dataset}
+We evaluated the performance of SBS on the ActivityNet Captions dataset \cite{krishna2017dense}, which contains 19,994 YouTube videos.
+The dataset is divided into three subsets for training, validation, and testing, consisting of 10,009, 4,917, and 4,885 videos, respectively.
+The videos range in length from short to long, with minimum, average, and maximum lengths of 1.58, 117.60, and 755.11, respectively.
+The number of events per video ranges from 2 to 27, with minimum, average, and maximum values of 2, 3.66, and 27.
+The lengths of the sentences in the dataset range from 17 to 409 words, with an average of 67.7 words.
+
+\subsection{Metrics}
+To evaluate the performance of SBS event localization, we compare the temporal intersection over union (tIoU) between ground-truth events and predicted events.
+We measure recall and precision for thresholds of 0.3, 0.5, 0.7, and 0.9. Specifically, we consider the sample to be true if the tIoU between the two is above each threshold.
+For captioning performance evaluation, we use three metrics: METEOR \cite{banerjee2005meteor}, CIDEr \cite{vedantam2015cider}, and BLEU \cite{papineni2002bleu}.
+We use publicly available evaluation code\footnote{\url{https://github.com/ranjaykrishna/densevid_eval}} provided by the ActivityNet Captions Challenge.
+Given an event and sentence pair, we calculate a captioning score by comparing the corresponding ground-truth sentence if the tIoU between the predicted event and any ground-truth event is greater than the threshold. Otherwise, the score is set to 0.
+
+\subsection{Implementation Details}
+\label{subsec:exp_impl}
+The transformer of SBS's video encoder follows the original paper \cite{vaswani2017attention}.
+Specifically, we set the hidden size $d_m$ of multi-head attention to 512, the number of attention heads to 8, and the number of layers in the encoder to 6. The feed-forward network has 2,048 nodes.
+The dropout rate for residual blocks and attention is set to 0.1.
+Following previous works \cite{mun2019streamlined,wang2021end}, we set the hidden size of the event context encoder and sequential captioner in the captioning network to a single layer of 512.
+To prevent overfitting and improve generalization, we use PRELU \cite{he2015delving} and GELU \cite{hendrycks2016gaussian} as activation functions for the CNNs and fully-connected layers for the temporal event counter and temporal boundary classifier, which experimentally outperforms other options.
+We set the epochs for each stage of SBS to 20, 20, and 30, and train with an adamW optimizer \cite{loshchilov2017decoupled} and a batch size of 1.
+The focal loss hyperparameter, $\gamma$, is set to 2.0 (more information on $\gamma$ settings is in Section \ref{subsec:exp_ablation}).
+Several recently proposed methods \cite{mun2019streamlined,wang2020event,deng2021sketch} use reinforcement learning (RL) to further improve the captioning module.
+To ensure fair comparison, we also fine-tune the context-level event encoder and sequential event captioner using RL (based on \cite{rennie2017self}) with the reward function METEOR.
+
+\subsection{Performance Comparison}
+\label{subsec:exp_comparison}
+
+\textbf{Event Localization.}
+We compared several state-of-the-art dense video captioning methods to evaluate the performance of SBS. First, we present the performance of event localization in Table \ref{tab:eval_event_localizer}.
+Above all, SBS shows the best F1 score performance among other methods.
+MFT and SDVC generate candidate event proposals, then use an event selection network, such as ESGN, to remove less significant or overlapping ones. On the other hand, PDVC and PPVC generate proposals directly in parallel from a localization head composed of box prediction and classification.
+In contrast, SBS has a gradual approach to explicitly estimate the number of events, detect event boundaries, and then generate event proposals. This approach is more effective in localizing overlapping or short events.
+Moreover, SBS can detect multiple context events in a video, enabling detailed video descriptions (details in Section \ref{subsec:exp_qualitative}).
+SBS outperforms MFT by a large margin and is superior to both SDVC and PDVC in terms of overall localization performance and F1 score.
+
+\textbf{Dense Captioning.}
+Table \ref{tab:eval_captioner} shows the performance of state-of-the-art methods in dense video captioning.
+When using ground-truth event proposals, SBS achieves a remarkable improvement compared to other methods in terms of the METEOR score, which is a commonly used evaluation metric in the ActivityNet Captions Challenge.
+When using predicted proposals, SBS achieves comparable performance to state-of-the-art algorithms on CIDEr and METEOR.
+Specifically, it exceeds SGR by 5.8 on CIDEr and is only 0.02 below SGR on METEOR.
+In particular, SBS outperforms MV-GPT or Vid2Seq with pre-trained models.
+These results prove that both the context-level event encoder and sequential captioner, which consist of two LSTMs, provide excellent captioning quality.
+
+\textbf{Inference Time.}
+We compare the inference time of SBS with that of other methods in Table \ref{tab:eval_inference_time}.
+The inference time of SBS is 1.13 seconds, faster than TDA-CG and MT, but slower than PDVC.
+This can be explained by the fact that SBS does not generate unnecessary event proposals unlike previous works.
+Secondly, SBS generates event proposals with only one feed-forward without repetitive inferences for event proposal generation.
+However, compared to PDVC, which decodes captioning and localization in parallel as, SBS is inherently inferior.
+
+\subsection{Qualitative Results}
+\label{subsec:exp_qualitative}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/sbs_exp_qualitative}
+  \caption{
+    Examples of qualitative result on the ActivityNet Captions dataset.
+    Sentences corresponding to the event are matched with the same color.
+    We also show the 1D actionness table obtained from the event counter table.
+    % (details are in Section \ref{subsec:method_temporal_event_counter}).
+  }
+  \label{fig:experiment_qualitative}
+\end{figure*}
+
+We visualize the results for two videos included in the ActivityNet Captions validation set in Figure \ref{fig:experiment_qualitative} to examine the results of SBS in more detail through qualitative evaluation.
+It indicates two main features that can clarify SBS.
+First, SBS is highly effective at detecting events that occur at the same time.
+For instance, in the first video, the red and blue events have a temporal Intersection over Union (tIoU) of over 0.8, but SBS recognizes them as distinct events and retains both. Algorithms that don't take content into account, like NMS, would remove one of the events.
+In the second video, SBS creates temporally overlapped events and provides different captions, demonstrating its ability to caption multiple stories that unfold simultaneously in the video.
+Second, the 1d actionness table approximately represents the number of scene transitions and duplicate events in the video story.
+In the first video, it is evident that the black event interval (where three events overlap) has the highest actionness.
+In the second video, we observe a pattern where actionness rapidly decreases whenever the scene changes and remains consistent when the scene is maintained.
+
+\subsection{Ablation Study}
+\label{subsec:exp_ablation}
+
+\begin{table}[t]
+  \parbox{\linewidth}{
+    \centering
+    \caption{
+      Ablation results on the ActivityNet Captions validation set.
+      TEC, TBC, NMS stand for the temporal event counter, the temporal boundary classifier, and non-maximum suppression algorithm, respectively.
+      R, P, M stand for recall, precision, and F1 score, respectively.
+    }
+    \begin{tabular}{ccc|c|c|c|c}
+      \hline
+      \multicolumn{3}{c|}{Applied modules} & \# of        & \multirow{2}{*}{R} & \multirow{2}{*}{P} & \multirow{2}{*}{M}                \\
+      TEC                                  & TBC          & NMS                & proposals          &                    &              \\
+      \hline
+      $\checkmark$                         &              & $\checkmark$       & 2.57               & 44.32              & 49.03 & 6.64 \\
+                                           & $\checkmark$ &                    & 2.77               & 51.81              & 53.09 & 6.93 \\
+      $\checkmark$                         & $\checkmark$ &                    & 3.54               & 59.25              & 58.89 & 9.05 \\
+      \hline
+    \end{tabular}
+    \label{tab:exp_ablation_module}
+  }
+\end{table}
+
+\begin{table}[t]
+  \parbox{\linewidth}{
+    \centering
+    \caption{
+      Ablation study on focal loss weight $\gamma$.
+      % in Section \ref{subsec:method_temporal_event_counter}.
+      We report F1 scores for tIoU thresholds of 0.3, 0.5, 0.7, and 0.9.
+    }
+    \setlength\tabcolsep{6pt}
+    \begin{tabular}{c|cccc|c}
+      \hline
+      \multirow{2}{*}{$\gamma$} & \multicolumn{4}{c|}{F1 (@tIoU)} & \multirow{2}{*}{Average}                                                 \\
+                                & @0.3                            & @0.5                     & @0.7          & @0.9          &               \\
+      \hline
+      0.5                       & \textbf{95.9}                   & \textbf{82.9}            & 42.0          & 11.7          & 58.1          \\
+      1.0                       & 95.4                            & 81.4                     & 43.6          & 11.5          & 58.0          \\
+      2.0                       & 94.9                            & 80.9                     & \textbf{44.6} & \textbf{13.3} & \textbf{58.4} \\
+      5.0                       & 91.4                            & 77.4                     & 42.61         & 12.2          & 55.9          \\
+      \hline
+    \end{tabular}
+    \label{tab:exp_ablation_gamma}
+  }
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \caption{
+    {Comparison of SBS's inference time with existing methods.
+        We measure the average inference time per video on the ActivityNet Captions dataset with a single RTX 3090 GPU.}
+  }
+  \begin{tabular}{l|cccc}
+    \hline
+    {Method}   & {TDA-CG \cite{wang2018bidirectional}} & {MT \cite{zhou2018end}} & {PDVC \cite{wang2021end}} & {{SBS}}  \\
+    \hline
+    {Time (s)} & {2.28}                                & {1.97}                  & {0.18}                    & {{1.13}} \\
+    \hline
+  \end{tabular}
+  \label{tab:eval_inference_time}
+\end{table}
+
+We conduct several ablation studies on the ActivityNet Captions validation set to verify the effectiveness of SBS's each modules.
+We compare three models of modules in different combinations as follows: (i) SBS without the temporal boundary classifier, (ii) SBS without the temporal event counter, (iii) Full model.
+Specifically, model (i) generates a large number of valid proposals from the event counter map and removes duplicates with a non-maximum suppression algorithm because information around the boundary is ambiguous.
+Model (ii) generates event proposals from a binary actionness map without inferring an explicit number of events.
+Model (iii) is a full SBS using all modules.
+The results are summarized in Table \ref{tab:exp_ablation_module}.
+Model (i) detects fewer events per video due to the elimination of unnecessary event proposals, which eventually leads to low recall.
+Furthermore, ambiguous event boundaries hinder high-quality localization.
+Since model (ii) generates event proposals using actionness maps composed of positive or negative elements (threshold is 0.5), it is difficult to detect events in overlapping or different contexts.
+The full model successfully localizes events and leads to improved performance in terms of METEOR.
+These results demonstrate that both the temporal event counter and temporal boundary classifier, which are modules for localization of SBS, are effective in detecting multiple overlapping events of dense video captioning.
+
+We vary the focal loss hyperparameter, $\gamma \in \left[0.5, 1.0, 2.0, 5.0\right]$ used in \cite{lin2017focal}.
+We report the F1 score of the event localization for four trained model.
+The results are presented in Table \ref{tab:exp_ablation_gamma}.
+With an F1 difference of up to 2.6 over a wide range of $\gamma$, SBS shows stable results.
+Based on these results, we set $\gamma$ to 2.0 for the best performance.

@@ -1,0 +1,105 @@
+% !TEX root = main.ex
+
+\chapter{Introduction}
+\label{chap:introduction}
+
+\section{Background and Motivation}
+
+
+The rapid advancement of artificial intelligence technology has brought revolutionary innovations to natural language processing (NLP) and computer vision, with transformative breakthroughs such as large language models \cite{Brown2020-gx,Devlin2019-ld}, attention mechanisms \cite{Vaswani2017-sc}, and vision transformers \cite{Dosovitskiy2021-vn}.
+However, the multimodal domain that simultaneously processes and describes video and text content remains fraught with significant challenges \cite{rahate2021multimodal,baltrusaitis2019multimodal}.
+The fundamental difficulty lies in effectively bridging the semantic gap between visual and linguistic modalities, requiring sophisticated alignment mechanisms to establish meaningful correspondences between temporal visual patterns and natural language descriptions.
+
+Traditional video understanding technologies have predominantly focused on short, trimmed video clips, developing robust methodologies for action recognition \cite{Carreira2017-fg,Feichtenhofer2019-mh} and video classification \cite{Karpathy2014-xm}.
+However, real-world applications increasingly demand the ability to capture and describe diverse events occurring within long, untrimmed videos \cite{Heilbron2015-ha}.
+This paradigm shift presents substantial computational and methodological challenges, as models must process extended temporal sequences while maintaining fine-grained understanding of event boundaries and content relationships.
+The transition from trimmed to untrimmed video analysis represents a fundamental evolution in video understanding, requiring novel approaches to handle the increased complexity and variability inherent in naturalistic video content.
+
+Dense Video Captioning (DVC) has emerged as a critical technology that temporally localizes multiple events within long videos and generates accurate natural language descriptions for each identified event \cite{Krishna2017-pw}.
+This technology addresses growing practical demands across diverse application domains, including automated video surveillance systems for security monitoring \cite{stallings2019automated}, intelligent sports commentary generation for broadcasting \cite{chen2024integrated}, and content-based video retrieval for large-scale media libraries \cite{luo2020comprehensive}.
+The increasing volume of video content across digital platforms necessitates automated tools that can efficiently index, search, and summarize video materials, making DVC an essential component of modern multimedia systems.
+
+In real-world video scenarios, events exhibit complex overlapping patterns and are subject to subjective interpretations that vary based on context and observer perspective \cite{long2021temporal}.
+Traditional deterministic approaches, which assume a single correct interpretation for each video segment, fail to capture the inherent ambiguity and multiplicity of valid event descriptions that characterize naturalistic video content \cite{Summers2021-mz}.
+This limitation becomes particularly pronounced when dealing with concurrent events, where multiple activities may occur simultaneously within the same temporal window, or when event boundaries are temporally ambiguous. 
+The recognition that video interpretation involves fundamental nondeterministic elements has motivated the development of more flexible approaches that can accommodate multiple valid interpretations while maintaining coherent and contextually appropriate descriptions.
+
+\subsection{Problem Definition and Scope}
+
+Existing DVC models predominantly employ a sequential pipeline that performs event localization and event captioning as separate, consecutive tasks \cite{Krishna2017-pw, Li2018-ll, Wang2018-ap}.
+This sequential approach inherently suffers from error propagation, where inaccuracies in the localization stage cascade to the captioning module, significantly degrading the overall quality of generated descriptions.
+The localize-then-describe paradigm creates an information bottleneck that prevents the captioning module from accessing rich visual context that could inform both temporal boundary detection and language generation simultaneously.
+
+Real-world videos present additional complexities that challenge conventional deterministic approaches to dense video captioning.
+Events in untrimmed videos frequently overlap temporally, exhibit complex interdependencies, and involve subjective interpretations that vary across annotators \cite{Qasim2025-mp}.
+The inherent nondeterminism in event definition and boundary delineation means that multiple valid interpretations may exist for the same video content, yet most existing methods assume a single ground truth \cite{Duan2018-qf, Shen2017-gx}. This subjectivity in event perception introduces semantic ambiguity during training, as different annotators may identify distinct event boundaries and generate diverse caption sets for identical video segments.
+
+The computational and annotation costs associated with fully supervised dense video captioning have motivated increased interest in weakly supervised learning and large-scale pretraining approaches. While weakly supervised methods aim to reduce dependency on temporal annotations by learning from video-level captions alone \cite{Duan2018-qf, Shen2017-gx}, and pretraining approaches leverage large-scale video-text datasets to improve model generalization \cite{Yang2023-fm, Huang2020-as}, these methodologies remain underexplored in their practical application to real-world scenarios. The challenge lies in effectively bridging the gap between weak supervision signals and the precise temporal localization required for dense captioning, while maintaining caption quality and coherence.
+
+Consequently, there is a critical need for methodological innovations that address four key limitations: efficient detection of overlapping and temporally complex events, minimization of information loss through parallel processing architectures, improved learning efficiency through weakly supervised and pretraining strategies, and realistic captioning approaches that accommodate the inherent nondeterminism in event interpretation. These challenges motivate the development of diverse algorithmic strategies that can handle the multifaceted nature of dense video captioning while maintaining practical applicability in real-world scenarios.
+
+
+
+\subsection{Research Objectives}
+
+To address the aforementioned challenges in dense video captioning, this research aims to develop and evaluate four distinct yet complementary approaches that tackle different aspects of the fundamental limitations in existing methods. Each approach represents a targeted solution to specific problems while contributing to the overall advancement of dense video captioning technology.
+
+First, we propose a gradual Step-by-Step (SBS) framework that explicitly predicts the number of events in a video and progressively detects event boundaries based on this prediction. Unlike conventional approaches that rely on fixed proposal generation schemes \cite{Krishna2017-pw, Wang2018-ap}, our method addresses the challenge of overlapping and variable-length events by implementing a human-inspired progressive detection strategy. This approach aims to improve the precision of event localization, particularly in scenarios where events exhibit complex temporal overlaps and varying durations \cite{Choi2023-so}.
+
+Second, we introduce a Parallel Pathway Dense Video Captioning (PPVC) framework that breaks away from the traditional sequential ``localize-then-describe'' pipeline.
+While existing methods suffer from error propagation between event detection and caption generation stages \cite{Zhou2018-zu, Mun2019-ap}, our parallel approach performs event localization and captioning simultaneously without bottlenecks. 
+By incorporating deformable transformers \cite{Vaswani2017-sc} and multi-stack cross-attention mechanisms, this framework minimizes information loss and reduces the dependency on the performance of preceding modules \cite{Choi2022-cu}.
+
+Third, we develop a Pretraining-based Weakly Supervised Dense Video Captioning (PWS-DVC) approach that leverages large-scale clip-level caption datasets for model initialization without requiring explicit event-level annotations.
+This method addresses the annotation scarcity problem inherent in dense video captioning \cite{Shen2017-gx, Duan2018-qf} by utilizing readily available video-caption pairs from datasets such as WebVid and YT-Temporal-1B.
+The pretraining strategy enhances model generalization and learning stability in weakly supervised scenarios while maintaining competitive performance compared to fully supervised methods.
+
+Fourth, we propose an Adversarial Dense Video Captioning (ADVC) framework that explicitly models the nondeterministic nature of event interpretation and caption generation.
+Recognizing that dense video captioning inherently involves subjective judgments and multiple valid interpretations \cite{Goodfellow2014-hs}, this approach employs adversarial training to generate diverse and realistic event descriptions.
+The framework consists of unsupervised pretraining on large-scale unlabeled data followed by adversarial adaptation, enabling the model to capture the distribution of human-annotated events and produce varied yet coherent captions for the same video content.
+
+Each of these approaches targets specific limitations in current dense video captioning systems: the SBS framework addresses event detection precision, PPVC eliminates pipeline bottlenecks, PWS-DVC tackles annotation requirements, and ADVC handles interpretation diversity.
+Through comprehensive experimental evaluation on standard benchmarks including ActivityNet Captions \cite{Krishna2017-pw} and YouCook2 \cite{Zhou2018-eq}, we aim to demonstrate that these methods not only advance the state-of-the-art in their respective problem domains but also provide complementary solutions that can be integrated for more robust and practical dense video captioning systems.
+
+The ultimate objective of this research is to contribute to the development of more accurate, efficient, and realistic dense video captioning models that can handle the complexity and diversity of real-world video content, thereby enabling broader applications in video understanding, content retrieval, and multimedia accessibility.
+
+
+\subsection{Contributions}
+This dissertation addresses the primary limitations of dense video captioning by clearly defining key challenges and proposing four novel approaches (SBS, PPVC, PWS-DVC, and ADVC) to overcome them, with experimental validation demonstrating the effectiveness and synergistic integration of each approach.
+Unlike existing methods that typically focus on a single aspect of the problem \cite{Krishna2017-pw, Zhou2018-zu, Mun2019-ap}, our comprehensive framework systematically tackles multiple fundamental issues including sequential pipeline limitations, data scarcity, and the nondeterministic nature of event interpretation.
+The proposed unified framework advances the state-of-the-art by addressing both methodological and practical challenges that have hindered the deployment of dense video captioning systems in real-world applications.
+
+We propose the Step-by-Step (SBS) approach that explicitly predicts the number of events and progressively processes overlapping events, and the Parallel Pathway with Deformable Transformer (PPVC) approach that simultaneously performs event detection and captioning to eliminate the bottleneck effects inherent in sequential pipelines.
+The SBS framework addresses the challenge of overlapping and nested events by introducing a gradual refinement mechanism that iteratively improves event boundary detection \cite{Chen2021-sv, Deng2021-qd}.
+Meanwhile, PPVC overcomes the error propagation problem common in traditional ``localize-then-describe'' pipelines \cite{Li2018-ll, Wang2018-ap} by employing parallel decoding strategies with deformable attention mechanisms, thereby reducing information loss and improving overall captioning consistency \cite{Choi2022-cu}.
+
+To address the data scarcity problem, we introduce the Pretraining-based Weakly Supervised Dense Video Captioning (PWS-DVC) framework that leverages large-scale clip-level caption datasets for effective pretraining without requiring event-level annotations, and the Adversarial Dense Video Captioning (ADVC) approach that models the nondeterministic nature of event definitions through adversarial learning to achieve realistic captioning performance.
+The PWS-DVC framework demonstrates that effective dense video captioning models can be trained using readily available video-caption pairs without expensive temporal localization annotations \cite{Huang2020-as, Luo2022-yq}, while ADVC addresses the fundamental challenge that multiple valid interpretations exist for the same video content \cite{Seo2022-ok, Yang2023-fm}.
+These approaches significantly improve the practical applicability of dense video captioning by reducing annotation requirements and handling the inherent ambiguity in video interpretation.
+
+Through comprehensive evaluation on standard benchmarks including ActivityNet Captions and YouCook2, we demonstrate that our integrated framework achieves superior performance compared to existing state-of-the-art methods across both quantitative metrics (METEOR, CIDEr, BLEU) and qualitative assessments.
+Our experimental validation includes extensive ablation studies that verify the individual contribution of each proposed component, cross-dataset generalization experiments that demonstrate robustness across different domains, and comprehensive analysis of computational efficiency compared to baseline methods \cite{Krishna2017-pw, Zhou2018-zu, Wang2021-zi}.
+The results consistently show significant improvements in captioning quality, temporal localization accuracy, and system robustness, establishing new benchmarks for dense video captioning performance while maintaining practical computational requirements for real-world deployment.
+
+
+\subsection{Dissertation Organization}
+\label{sec:dissertation_organization}
+
+This dissertation is structured around four distinct approaches to address various challenges in dense video captioning, with each chapter systematically presenting the design motivation, model architecture, experimental evaluation, and analysis of the respective approach.
+
+\textbf{Chapter~\ref{chap:related_work}} provides a comprehensive overview of the research background and development trends in dense video captioning. We categorize existing research according to their methodological approaches (e.g., sequential, parallel, weakly supervised, and generative) and establish the positioning and distinctive contributions of the four approaches proposed in this dissertation.
+
+\textbf{Chapter~\ref{chap:gradual_pathway}} introduces the Step-by-Step (SBS) framework, a gradual detection-based approach that explicitly predicts the number of events and progressively localizes event boundaries based on this estimation. We demonstrate how this method enhances the precision of overlapping event detection through sequential captioning strategies.
+
+\textbf{Chapter~\ref{chap:parallel_pathway}} presents the Parallel Pathway with Deformable Transformer (PPVC) architecture, which performs event detection and sentence generation in parallel to overcome the bottleneck and error propagation issues inherent in traditional sequential (localize-then-describe) pipelines.
+We detail the bottleneck-free branching design and improvements achieved through multi-stack cross-attention mechanisms.
+
+\textbf{Chapter~\ref{chap:pws_dvc}} introduces the Pretraining-based Weakly Supervised Dense Video Captioning (PWS-DVC) framework.
+This approach demonstrates how large-scale clip-level caption datasets can be effectively utilized for model training without event-level annotations, and evaluates the generalization performance of this stable learning framework under weakly supervised conditions.
+
+\textbf{Chapter~\ref{chap:adversarial_pathway}} describes the Adversarial Dense Video Captioning (ADVC) framework, which incorporates nondeterminism through adversarial generative learning.
+This approach accommodates multiple possible interpretations in realistic video scenarios and experimentally validates the diversity and consistency of generated captions that embrace various expression possibilities.
+
+\textbf{Chapter~\ref{chap:conclusions}} summarizes the overall contributions of this dissertation, discusses the limitations of each approach and improvement directions for practical applications, and presents future research challenges in the field of dense video captioning.
+
+Each approach addresses independent problem formulations and solution strategies, and this dissertation systematically evaluates the methodological validity and practical effectiveness of each through comprehensive quantitative and qualitative metrics.

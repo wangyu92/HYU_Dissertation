@@ -1,0 +1,74 @@
+% !TEX root = ./main.tex
+
+\chapter{Related Work}
+\label{chap:related_work}
+
+%------------------------------------------------------------------------------
+\section{Related Work}
+%------------------------------------------------------------------------------
+
+Dense–video–captioning (DVC) research builds on three lines of prior work:  
+(i) sentence–level \emph{video clip captioning},  
+(ii) \emph{dense} captioning of untrimmed videos under various supervision and architectural regimes, and  
+(iii) emerging techniques that exploit large–scale pre-training or adversarial learning to mitigate data sparsity and subjectivity.  
+We synthesise the literature along these axes, following the analytical structure suggested by our thesis ToC.
+
+%------------------------------------------------------------------------------
+\subsection{Video Clip Captioning}
+%------------------------------------------------------------------------------
+Early studies generate a single sentence per \emph{trimmed} video via an encoder–decoder paradigm that mirrors neural machine translation \cite{sutskever2014sequence,cho-etal-2014-learning}.  
+CNNs encode frame sequences while RNNs (LSTM/GRU) \cite{venugopalan2015sequence,venugopalan2015translating} decode word tokens.  
+Enhancements include temporal attention \cite{yao2015describing}, hierarchical decoders \cite{pan2016hierarchical,baraldi2017hierarchical}, multimodal/semantic embeddings \cite{pan2016jointly,gan2017semantic,pan2017video,yu2017end}, spatial–hard attention \cite{liu2018fine}, reconstruction losses \cite{wang2018reconstruction}, and reinforcement learning for adaptive attention \cite{xiao2019video}.  
+Although paragraph-level extensions exist \cite{yu2016video,xiong2018move,lei2020mart}, clip-level methods cannot describe long, overlapping events and therefore motivate DVC.
+
+%------------------------------------------------------------------------------
+\subsection{Dense Video Captioning}
+%------------------------------------------------------------------------------
+\subsubsection{Sequential Bottom-Up / Top-Down Paradigms}  
+The seminal bottom-up DEC detects temporal proposals with LSTMs and captions them sequentially \cite{Krishna2017-pw}.  
+Follow-ups improve localisation via descriptiveness prediction \cite{Li2018-ll}, bidirectional context \cite{Wang2018-ap}, or single-stream proposals \cite{Mun2019-ap}.  
+Top-down pipelines invert the order: paragraph generation precedes sentence-to-segment grounding \cite{Deng2021-qd}.  
+Both suffer from error propagation and often rely on NMS or threshold heuristics, which hampers overlapping–event recall \cite{lin2018bsn}.
+
+\subsubsection{Parallel and End-to-End Transformers}  
+Masked-transformer DVC \cite{Zhou2018-zu} and deformable-transformer PDVC \cite{Wang2021-zi} remove explicit proposal networks and decode localisation \emph{and} language jointly, leveraging self-attention’s long-range modelling superiority over LSTMs \cite{vaswani2017attention}.  
+PPVC further alleviates branch bottlenecks through a representation organiser, gating network, and multi-stack cross attention, boosting performance on ActivityNet and YouCook2 \cite{Choi2023-so}.
+
+\subsubsection{Pre-training for Data Efficiency}  
+Limited manual annotations inspire vision–language pre-training.  
+E2ESG transfers the WikiHow-pre-trained T5 captioner into DVC \cite{Zhu2022-mg}.  
+UEDVC self-pre-trains on ActivityNet captions \cite{Zhang2022-ni}, whereas Vid2Seq scales to narrated YouTube videos with ASR transcripts \cite{Yang2023-fm}.  
+These sequence-to-sequence models excel at lexical diversity but still depend on noisy narration and couple localisation tightly to generation.
+
+\subsubsection{Weakly Supervised DVC}  
+WS-DEC \cite{Duan2018-qf} and EC-SL \cite{Chen2021-sv} replace proposal detection with alternating \emph{event captioning} and \emph{caption localisation}, requiring only sentence supervision.  
+PWS-DVC enhances this regime by pre-training the captioner on MSR-VTT and fine-tuning jointly, closing much of the gap to fully-supervised systems \cite{Aafaq2023-vk}.
+
+\subsubsection{Gradual Reasoning for Overlapping Events}  
+SBS adopts a human-like \emph{step-by-step} strategy: explicit event counting (Temporal Event Counter), boundary classification, and context-aware sentence generation.  
+This avoids hand-crafted NMS, achieves high recall on overlapping regions, and remains interpretable \cite{StepByStep2023}.
+
+%------------------------------------------------------------------------------
+\subsection{Design Considerations Across Paradigms}
+%------------------------------------------------------------------------------
+\paragraph{Temporal Encoding.}  
+Transformers capture long-term dependencies in untrimmed videos and allow parallel training, whereas LSTMs are sequential but memory-efficient \cite{krishna2017dense,zhou2018end,wang2021end}.  
+
+\paragraph{End-to-End vs.\ Modular Training.}  
+While end-to-end models back-propagate global losses, higher inductive-bias modular designs (e.g., TEC+TBC in SBS) can excel when training data are scarce.
+
+\paragraph{Event Representation.}  
+Heat-map generators and deformable sets bypass proposal filtering; query-based systems must balance query count with precision–recall trade-offs \cite{Choi2023-so}.
+
+%------------------------------------------------------------------------------
+\subsection{Adversarial and Object-Centric Extensions}
+%------------------------------------------------------------------------------
+Adversarial DVC (ADVC) frames localisation–captioning as a generative task: a video-conditioned GAN learns the distribution of human event sets, while a sentence GAN bridges video and language embeddings for realistic, diverse captions \cite{ssrn-4835759}.  
+Object-oriented variants incorporate structured trajectories and GAN critics to capture fine-grained entity interactions, improving descriptiveness in complex scenes \cite{Zhu2022-mg}.
+
+%------------------------------------------------------------------------------
+\subsection{Summary}
+%------------------------------------------------------------------------------
+Research has progressed from sequential LSTM frameworks to transformer-based, parallel, pre-trained, weakly supervised, and adversarial models.  
+Gradual reasoning improves overlapping-event recall; parallel deformable transformers alleviate bottlenecks; large-scale pre-training broadens linguistic coverage; and adversarial learning tackles subjectivity.  
+Our work unifies these complementary advances to push dense video captioning towards detailed, coherent, and human-like descriptions of long, real-world videos.

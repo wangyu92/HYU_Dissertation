@@ -1,0 +1,546 @@
+% !TEX root = ./main.tex
+
+\chapter{Adversarial Pathway: Realistic Captioning via Unsupervised Pretraining and Adversarial Adaptation (ADVC)}
+\label{chap:adversarial_pathway}
+
+\section{Nondeterminism Challenges in Dense Video Captioning}
+
+The availability of large-scale video datasets~\cite{Heilbron2015-ha,Abu-El-Haija2016-yh,Carreira2019-va} and advances in video understanding~\cite{Tran2015-uq,Feichtenhofer2019-mh,Arnab2021-gv} have facilitated the development of video-related tasks.
+Recent interest in natural language processing (NLP) has led to efforts to jointly understand vision and language~\cite{Radford2021-kx,Luo2022-yq}.
+Video captioning~\cite{Rohrbach2013-md} is a significant task that integrates computer vision and NLP to provide sentence-based descriptions for videos.
+Dense video captioning (DVC)~\cite{Krishna2017-pw} extends this task to the untrimmed video setting, where the objective is to temporally segment the video into a sequence of salient events and generate a descriptive sentence for each event.
+It requires solving two tightly coupled subproblems: (i) identifying semantically meaningful temporal boundaries (event localization), and (ii) generating coherent and contextually grounded captions aligned with each segment.
+DVC holds potential for real-world applications, such as video retrieval, surveillance, and assistive systems\cite{Wajid2024-ab}.
+
+A key challenge in DVC lies in its inherent non-determinism, stemming from the subjectivity of human perception.
+Different annotators may interpret the same video differently, producing diverse sets of event boundaries and associated captions.
+This semantic ambiguity introduces uncertainty during training, as multiple plausible outputs may exist for a given input. Conventional supervised methods, which attempt to minimize loss against a single annotated ground truth, often fail to capture the full diversity of valid interpretations.
+Consequently, models tend to generate oversimplified outputs, such as broad events and generic catch-all sentences, that do not reflect the richness of the underlying video content~\cite{Summers2021-mz}.
+
+Numerous efforts have been made to improve DVC, resulting in significant advancements in performance.
+However, most methods overlook the inherent non-determinism of the DVC task.
+For example, some approaches~\cite{Krishna2017-pw,Li2018-ll,Mun2019-ap} focus on enhancing event localization and captioning as separate subtasks, while others~\cite{Zhou2018-zu,Wang2021-zi,Deng2021-qd} train them together, taking into account their correlation.
+Recently, there has been a rise in pretraining methods~\cite{Zhang2022-ni,Yang2023-fm} that pretrain extensive training samples from large video-language datasets, demonstrating exceptional performance.
+Nevertheless, these methods still rely on strict supervision with limited video-language datasets.
+Their localization performance is modest due to narrated video datasets that do not faithfully describe video content~\cite{Yang2023-fm}.
+Additionally, they use a sequence-to-sequence approach to handle events and captions, leading to highly coupled localization and captioning performance~\cite{Zhang2022-ni}.
+
+This paper addresses the nondeterminism inherent in dense video captioning through the introduction of ADVC, a novel framework employing adversarial training.
+Comprising two distinct stages, namely unsupervised pretraining and adversarial adaptation, ADVC stands apart from prevailing supervised methodologies.
+The pretraining phase incorporates video and sentence embedding modules trained unsupervisedly on abundant unlabelled video and text corpora.
+In the subsequent adaptation stage, localization is accomplished by assimilating the distribution of human-annotated events, while captioning entails mapping the video representation to the sentence representation space.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.8\linewidth]{figures/advc_intro_comp_previous}
+    \caption{Difference between the approach of the previous method (left) and the proposed approach (right).}
+    \label{fig:intro_approach}
+\end{figure}
+
+
+Our unique approach to unsupervised pretraining and adversarial adaptation offers several advantages over existing methods as illustrated in Figure~\ref{fig:intro_approach}.
+The video embedding and sentence embedding modules of the unsupervised learning approach have significant potential with additional data, as they are pretrained on easily accessible, high-quality unlabeled videos and text corpora.
+In the adaptation stage, ADVC generates accurate and descriptive events and captions with relatively small amounts of training samples by exploiting the high sample efficiency of adversarial learning.
+For a video, ADVC is capable of generating various event-caption sets by controlling the input noise, based on the inheritance of adversarial.
+Most importantly, the localization and captioning based on the adversarial approach directly learn the distribution of ground-truth events and captions, 
+producing realistic outcomes similar to those produced by human annotators. 
+Moreover, the separated training workflow of localization and captioning is very effective in decoupling them with only a suitable relationship.
+
+We conduct extensive experiments to demonstrate the effectiveness of the ADVC approach.
+Specifically, we show the effectiveness of unsupervised pretraining by pretraining ADVC on large-scale, high-quality unlabeled video datasets and text corpora.
+Additionally, we demonstrate the effectiveness of adversarial event localization and captioning by comparing it to existing methods on various downstream benchmark datasets\cite{Krishna2017-pw,Zhou2018-eq,Huang2020-as}.
+The results indicate that ADVC not only achieves state-of-the-art performance compared to existing methods but also produces qualitatively realistic event and captioning outputs.
+
+In summary, we present our contributions as follows: (i) ADVC is the first adversarial approach method for dense video captioning.
+(ii) We propose a novel approach of separately pretraining the vision-language problem and adversarial bridging in a downstream task. (iii) ADVC outperforms the existing methods on various benchmark datasets and produces more realistic results.
+  
+\section{Proposed ADVC Framework}
+
+Figure~\ref{fig:network_design} presents an overview of ADVC, which consists of two stages: pretraining and adaptation.
+In the pretraining stage, pretrained models for video and sentence embeddings are obtained using unlabeled videos and text corpora.
+The adaptation stage aims to adapt the pretrained models for localization and captioning for downstream tasks.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1\linewidth]{figures/advc_method_network_design}
+    \caption{
+        Overview: ADVC consists of two stages, pretraining (\textcolor{pt_stage}{\rule{8pt}{8pt}}) and adaptation (\textcolor{at_stage}{\rule{8pt}{8pt}}).
+    The pretraining stage includes modules for video and sentence embedding. 
+    The video embedding module uses a variational autoencoder, while the sentence embedding module uses an autoencoder to encode input video features and sentences, respectively.
+    The adaptation stage has two main components, event localization, and bridging and captioning.
+    Event localization generates event proposals using video embedding vectors as input while bridging and captioning generate sentence embedding vectors for captions using video embedding vectors for each event as input.
+    Both modules incorporate an adversarial approach, necessitating the integration of a discriminator within each module.
+    }
+    \label{fig:network_design}
+\end{figure}
+
+\subsection{Pretraining Stage}
+\label{subsec:pretraining}
+The goal of the pretraining stage is to obtain high-quality pretrained models that improve the performance of downstream tasks.
+Previous pretraining methods~\cite{Zhang2022-ni,Yang2023-fm} rely on annotated datasets of video-language, but ADVC focuses on pretraining with unlabeled video datasets and text corpora.
+Training on unlabeled video and text provides access to a substantial quantity of high-quality training samples, which can be used to establish superior pretrained video and language models.
+Our approach, along with the adaptation stage, improves downstream task performance.
+
+\subsubsection{Video embedding}
+The objective of the video embedding step is to transform numerous video features into a lower-dimensional latent space.
+Understanding the sequential arrangement of frames in a video, both in the short and long term poses a significant challenge.
+Existing methods~\cite{Krishna2017-pw,Mun2019-ap,Deng2021-qd,Yang2023-fm} attempt to extract essential information from video features by mapping them with ground-truth events or captions.
+However, focusing solely on training with ground-truth events and captions may result in the omission of essential information due to ambiguity and subjectivity.
+
+To address this challenge, we propose a video embedding technique that efficiently maps videos into a compact latent space without relying on strict supervision.
+We utilize a variational autoencoder (VAE) to extract important information from video features and reduce dimensionality, which is motivated by the demonstrated efficiency of~\cite{Zhang2017-jc,Wu2016-bh}.
+Our video embedding method efficiently extracts key information from video features and reduces dimensionality, enhancing their potential use as conditions in event localization and captioning during the later adaptation stage.
+
+To be more precise, we first encode videos at the frame level using pretrained CNN backbones, specifically C3D~\cite{Tran2015-uq} and TSN~\cite{Wang2019-xv} for ActivityNet Captions~\cite{Krishna2017-pw} and YouCook2~\cite{Zhou2018-eq} downstream tasks, respectively.
+For the C3D model, we use a 3D convolutional network with 8 convolutional layers, 5 pooling layers, and 2 fully connected layers.
+For the TSN model, we use a two-stream architecture with ResNet-50 as the backbone.
+Both models are fine-tuned on their respective datasets to adapt to the specific characteristics of the videos.
+For convenience, we rescale the features to a fixed $T$ in the temporal domain, as described in~\cite{Wang2021-zi}.
+Each frame is resized to 224x224 pixels, and features are extracted using the pretrained CNNs.
+These features are normalized to have zero mean and unit variance before being fed into the transformer-based encoder.
+
+The video is then passed through a transformer-based video encoder to account for temporal dependencies.
+Our transformer encoder consists of 6 layers, each with 8 attention heads and a hidden dimension of 512.
+The attention mechanism allows the model to focus on relevant frames across different time steps, capturing both short-term and long-term dependencies effectively.
+After pooling, $\mu$ and $\sigma$ are estimated for sampling the latent space of the Gaussian distribution.
+Using the latent vector sampled from the Gaussian distribution, the transformer-based video decoder reconstructs the features of the input video $V$ as follows:
+\begin{equation}
+    \begin{aligned}
+        \mathcal{L}_V = & \mathbb{E}_{q_\phi(\bm{z}_V \mid \bm{F}_V)}\left[\log p_\theta(\bm_V \mid \bm{z}_V)\right] -\text{KL}\left(q_\phi(\bm{z}_V \mid \bm{F}_V) \| p(\bm{z}_V)\right)
+    \end{aligned}
+\end{equation}
+where $\bm{F}_V$ is the feature of the video, $\bm{z}_V$ is the latent vector, and $\theta$ and $\phi$ are the parameters of the decoder and encoder, respectively.
+
+Our video encoding module has the advantage of yielding additional video-events and video-sentences pairs (i.e., conditioning augmentation~\cite{Zhang2017-jc}), in addition to feature extraction and dimensionality reduction.
+By sampling latent vectors $\bm{z}_V$ from the learned sampling model, we can generate new video features that are similar to, but different from, the real video.
+
+\subsubsection{Sentence embedding}
+During the sentence embedding process, our objective is to map each sentence from a large collection of unlabeled text corpora to a lower-dimensional space.
+This approach enables realistic captioning through the generation of a sentence embedding vector during the adaptation stage.
+The majority of DVC frameworks prioritize the mapping of videos to ground-truth sentences for training the captioning module.
+These approaches face challenges in generating realistic and descriptive sentences due to the reliance on language models, which necessitate a substantial amount of high-quality training data~\cite{Devlin2019-ld}.
+Furthermore, the task of generating realistic sentences is complicated by the mapping of video-language, which involves subjective and ambiguous captions.
+
+To address the aforementioned challenges, we suggest employing sentence embedding that can be acquired through unsupervised learning from unlabeled text corpora.
+Our approach for sentence embedding utilizes unsupervised learning to obtain comprehensive representations of different types of text, resulting in a highly proficient pretrained language model.
+% This enables the generation of realistic captions by projecting a video embedding vector onto the sentence's latent space.
+
+We adopt a transformer-based autoencoder architecture inspired by the achievements of \cite{Wang2022-um} in sentence embedding.
+The encoder consists of 6 layers, each with 8 attention heads and a hidden dimension of 512.
+The decoder has a similar structure but is designed to reconstruct the sentences from the encoder's output.
+Unlike the original transformer described in\cite{Vaswani2017-sc}, our transformer decoder is restricted to accessing only the $[\mathrm{CLS}]$ tokens of the encoder's output.
+This acts as a bottleneck and forces the caption encoder to capture the core information from the sentence.
+
+We further boost representation learning by using corrupted sentences as input and training the model to restore them, following the denoising autoencoder approach~\cite{Vincent2010-yp,Hill2016-sk}.
+This technique involves introducing noise into the input sentences and training the model to reconstruct the original sentences, which helps the model learn more robust representations.
+This also has the effect of augmenting the text data, as the model learns to handle various types of noise and distortions.
+
+The denoising autoencoder is trained using the following loss function:
+\begin{equation}
+\begin{aligned}
+    \mathcal{L}_{\text{SE}} & =\mathbb{E}_{x \sim D}\left[\log P_\theta(x \mid \tilde{x})\right] \\
+    & =\mathbb{E}_{x \sim D}\left[\sum_{t=1}^l \log P_\theta\left(x_t \mid \tilde{x}\right)\right] \\
+    & =\mathbb{E}_{x \sim D}\left[\sum_{t=1}^l \log \frac{\exp \left(h_t^T \bm{z}_{s_t}\right)}{\sum_{i=1}^N \exp \left(h_t^T \bm{z}_{s_i}\right)}\right]
+\end{aligned}
+\end{equation}
+where, $D$ is the text corpus, $x_t=\{ x_t \}_{t=1}^{l}$ is the $t$-th word in the sentence, $\tilde{x}$ is the corrupted sentence, $\bm{z}_{s_t}$ is the embedding vector of the $t$-th word, $\bm{h}_t$ is the hidden state of the $t$-th word, and $N$ is the vocabulary size.
+
+After training, the denoising autoencoder generates a sentence embedding vector, which maps an input sentence to a latent space.
+The decoder then uses this sentence embedding vector as input to generate sentences.
+This process ensures that the generated sentences are coherent and contextually relevant, capturing the essential information from the input sentences.
+
+Our approach allows the generation of realistic and descriptive captions by projecting a video embedding vector onto the sentence's latent space during the adaptation stage.
+By utilizing unsupervised learning and a transformer-based autoencoder, our method effectively captures the semantic richness of sentences and enhances the overall quality of the generated captions.
+
+\subsection{Adaptation Stage}
+\label{subsec:adaptation}
+The goal of the adaptation stage is to utilize the pretrained video and sentence embedding models to generate realistic outcomes that reflect the subjectivity and ambiguity inherent in events and captions during downstream tasks. 
+Despite the nondeterministic nature of dense video captioning (DVC), most existing approaches train models in a deterministic manner using supervised learning by minimizing the negative log-likelihood:
+\begin{equation}
+    \begin{aligned}
+        \mathcal{L}_{\text{DVC}} =\sum_{n=1}^N-\log p\left(e_n \mid V\right) p\left(s_n \mid e_n, V\right)
+    \end{aligned}
+\end{equation}
+where, $V$ denotes the input video, and $e_n$, $s_n$ are the $n$-th event and sentence, respectively. 
+However, due to the inherent ambiguity of DVC, there exist multiple plausible sets of event-caption pairs beyond the ground truth, which supervised learning fails to account for.
+
+To address this issue, one may attempt to acquire additional annotated data; however, this approach is limited by high annotation costs and time demands. 
+Instead, ADVC leverages adversarial learning to learn the distributional characteristics of human annotations directly, thereby circumventing the limitations of supervised datasets.
+
+We adopt a generative adversarial network (GAN)~\cite{Goodfellow2014-hs} that directly learns the distribution of a dataset:
+\begin{equation}
+    \begin{aligned}
+        \mathcal{L} & = \min_{G_E} \max_{D_E} V(D_E, G_E) + \min_{G_S} \max_{D_S} V(D_S, G_S)\\
+        & = \mathbb{E}_{e \sim p_{\text {data }}(e)}\left[\log D_E(e)\right] + \mathbb{E}_{e \sim p_{\text {model }}(e)}\left[\log \left(1-D_E(e)\right)\right]\\
+        & + \mathbb{E}_{s \sim p_{\text {data }}(s)}\left[\log D_S(s)\right] + \mathbb{E}_{s \sim p_{\text {model }}(s)}\left[\log \left(1-D_S(s)\right)\right]
+    \end{aligned}
+\end{equation}
+where, $G_E$, $G_S$ are the generators and $D_E$, $D_S$ the corresponding discriminators for events and captions, respectively.
+
+While GANs enable the generation of diverse and human-like outputs, they are known to suffer from training instability such as mode collapse, where generators produce repetitive or degenerate outputs. 
+To address these issues, we incorporate several stabilization techniques in ADVC: (i) R1 gradient penalty to regularize discriminator gradients, (ii) spectral normalization to constrain discriminator Lipschitz continuity, and (iii) a discriminator-to-generator update ratio of 10:1 to ensure effective convergence. 
+In addition, we use fixed random seeds and latent noise conditioning to enhance reproducibility and diversity.
+    
+The adversarial nature of GANs may also amplify biases inherent in the training data or introduce artifacts in generated outputs, which can compromise model robustness. 
+To alleviate such issues, we utilize diverse and large-scale unlabeled corpora and apply regularization techniques that promote stable and unbiased training.
+    
+Through these strategies, ADVC effectively captures the diversity of human annotations and generates realistic, variable outputs for both event localization and caption generation.
+
+\subsubsection{Event localization}
+\label{subsubsec:method_event_localization}
+The goal of event localization is to produce a collection of events that closely resemble those manually annotated by humans, taking into account both the contextual information and specific details present throughout the video.
+Previous methods~\cite{Deng2021-qd,Wang2021-zi} for event localization involve performing box prediction and classification, similar to object detection.
+Other works~\cite{Yang2023-fm} attempt to generate captions and output the boundaries of the event in a special token.
+However, these methods face challenges due to the ambiguity and subjectivity of events, as well as the difficulty of generating a realistic event set.
+For instance, they may generate fewer events or ignore overlapping events.
+
+Motivated by the effectiveness of GANs in object detection for low-quality, corrupted images~\cite{Li2017-ga,Prakash2021-oy}, we employ GAN to resolve the ambiguity in the event set.
+The event generation module consists of an event generator and an event discriminator, as shown in Figure~\ref{fig:network_design}.
+The event generator takes a latent code $\bm{z}$ as input and a video embedding vector $\bm{z}_V$ as a condition to generate an event heat map.
+The event discriminator is trained to distinguish between the synthesized and the ground-truth event heat map, enabling the generator to learn to generate an event heat map that is similar enough to the ground truth to deceive the discriminator.
+
+The event heat map enables us to take full advantage of GAN's strengths in generating continuous data, such as images, as a set of events can be mapped one-to-one.
+Our event heat map is presented as a 2D grid, where the x-axis signifies a time slot (i.e., $K$ fixed frames) in the video, and the y-axis indicates a distinct event channel.
+The value of each grid cell means a confidence score $c$ that indicates whether the corresponding event is present at that time slot.
+Here, the event heat map can be represented as follows:
+\begin{equation}
+    \begin{aligned}
+        \bm{M} = \begin{bmatrix}
+            c_{1,1} & c_{1,2} & \cdots & c_{1,N} \\
+            c_{2,1} & c_{2,2} & \cdots & c_{2,N} \\
+            \vdots & \vdots & \ddots & \vdots \\
+            c_{T,1} & c_{T,2} & \cdots & c_{T,N}
+        \end{bmatrix}
+    \end{aligned}
+\end{equation}
+where, $T$ is the number of time-slots, and $N$ is the maximum number of event.
+
+We follow the training schemes of SytleGAN2~\cite{Karras2020-fj} and CR-GAN~\cite{Tian2018-ys} for stable training of the generator and discriminator.
+Furthermore, since the generator needs to generate a set of events corresponding to a given video, we use the video latent vector $\bm{z}_V$ as a condition.
+The training process can be formulated as follows:
+\begin{equation}
+    \begin{aligned}
+    \mathcal{L}_{D_E}  & = \mathbb{E}_{(\bm{F},\bm{z}_V) \sim p_{data}}[{D_E}(\bm{F},\bm{z}_V)] - \mathbb{E}_{\bm{z} \sim p_{\bm{z}}} [{D_E}({G_E}(\bm{z},\bm{z}_V))]
+    \end{aligned}
+\end{equation}
+\begin{equation}
+    \begin{aligned}
+        \mathcal{L}_{G_E} = -\mathbb{E}_{\bm{z} \sim p_{\bm{z}}} [{D_E}({G_E}(\bm{z},\bm{z}_V))] + R_1(\psi)
+    \end{aligned}
+\end{equation}
+\begin{equation}
+\begin{aligned}
+    \mathcal{L}_{E} = \min_{G_E} \max_{D_E} \mathcal{L}_{D_E} + \mathcal{L}_{G_E}
+\end{aligned}
+\end{equation}
+\begin{equation}
+    \begin{aligned}
+        R_1(\psi)=\frac{\gamma}{2} E_{p_D(x)}\left[\left\|\nabla D_\psi(x)\right\|^2\right]
+    \end{aligned}
+\end{equation}
+where, $p_{data}$ represents the data distribution, while $p_{\bm{z}}$ represents the noise distribution.
+$\lambda$ controls the gradient penalty.
+
+\subsubsection{Bridging and captioning}
+Our video captioning module aims to generate descriptive, realistic sentences with event-specific words that resemble those produced by humans from video embedding vector $\bm{z}_V$.
+Most of the existing frameworks~\cite{Krishna2017-pw,Li2018-ll,Wang2018-ap,Zhou2018-zu,Mun2019-ap,Deng2021-qd,Wang2021-zi} generate sentences by learning a function that maps video features to a sequence of words.
+However, several previous studies~\cite{Raffel2020-vo,Brown2020-gx,Devlin2019-ld} have indicated that learning a language model that produces high-quality sentences requires a large text corpus and a large-scale model.
+The number of sentences available for the dense video captioning task is limited, and the nondeterminism of the captions makes learning high-quality language models even more challenging.
+
+To overcome this, we introduce a bridging and captioning technique that generates realistic sentences by simply mapping video embedding vector $\bm{z}_{v,i}$ for the $i$-th event to sentence embedding $\bm{z}_s$.
+For this purpose, we adopt a conditional GAN, similar to event localization.
+Unlike conventional supervised learning, this allows for effective bridging with small training samples and makes it more robust against outliers.
+
+Specifically, we directly learn the distribution of the sentence embedding vectors in latent space and generate the latent vector $\bm{z}_s$, as depicted in Figure~\ref{fig:network_design}.
+The generator $G_S$ and discriminator $D_S$ are trained as a minimax game, similar to the method described in Section~\ref{subsubsec:method_event_localization}.
+\begin{equation}
+    \begin{aligned}
+        \mathcal{L}_{S} = \min_{G_S} \max_{D_S} \mathcal{L}_{D_S} + \mathcal{L}_{G_S}
+    \end{aligned}
+\end{equation}
+Finally, we generate a caption for a given video segment by feeding the latent vector $\bm{z}_s$ produced by the generator $G_S$ into the decoder of the sentence embedding.
+This process ensures that the generated captions are coherent and contextually relevant, capturing the essential information from the input video segments and corresponding events.
+
+\section{Comparative Analysis and Experimental Results}
+
+\subsection{Datasets}
+We use videos from the WebVid~\cite{Bain2021-si} dataset and YT-Temp\discretionary{-}{}{}oral-1B~\cite{Zellers2022-zr} for video pretraining, following previous work.
+The unlabeled text corpus consists of texts obtained from the WebVid dataset and the WikiHow~\cite{Koupaee2018-et} dataset.
+The WebVid dataset comprises 10.7 million video-text pairs sourced from stock footage websites, totaling 52,000 hours of video.
+The YT-Temporal-1B dataset comprises 18 million YouTube videos.
+The WikiHow dataset consists of 2.7 million sentences obtained from the WikiHow website.
+
+We evaluate ADVC on three dense video captioning datasets for the downstream tasks: ActivityNet Captions~\cite{Krishna2017-pw}, You\discretionary{-}{}{}Cook2~\cite{Zhou2018-eq}, and ViTT~\cite{Huang2020-as}.
+The ActivityNet Captions dataset comprises 20,000 untrimmed videos depicting diverse human activities.
+The average duration of each video is 120 seconds, with an average of 3.7 sets of events and captions.
+YouCook2 comprises a collection of 2,000 videos demonstrating various cooking procedures.
+The average duration of each video is 320 seconds, with an average of 7.7 sets of events and captions.
+ViTT offers a collection of 8,000 instructional videos.
+The average duration of a video is 250 seconds, with an average of 7.1 events and tags.
+
+For video clip captioning, we utilize two standard benchmarks: MSR-VTT~\cite{Xu2016-ti} and MSVD~\cite{Chen2011-ai}.
+For all datasets, we adhere to the standard splits for training, validation, and testing.
+It is important to note that we only used videos that were accessible on YouTube at the time of our work, leading to a reduction of 10 to 20\% in the number of videos compared to the original datasets.
+ 
+\subsection{Evaluation metrics}
+We employ the evaluation code made publicly available by the ActivityNet Captions Challenge~\cite{Krishna2017-pw}.
+We evaluate our framework using recall and precision metrics for event localization, METEOR (M)~\cite{Banerjee2005-zo}, and CIDEr (C)~\cite{Vedantam2015-ma} metrics for sentence evaluation.
+% If a generated event and sentence pair have an overlapping larger than the threshold with any of the ground-truth events, we compared the corresponding ground-truth sentence to calculate the captioning score.
+% Otherwise, we set the score to 0.
+However, the aforementioned metrics do not consider the story aspect of the video.
+Therefore, we also incorporate the SODA\_c (S)~\cite{Fujita2020-ob} metric.
+
+\subsection{Implementation Details}
+We implement ADVC using PyTorch and train all models on a single NVIDIA GeForce RTX 3090 GPU. To ensure stable adversarial training, we follow best practices proposed in prior GAN literature, such as using the Adam optimizer (instead of AdamW), with $\beta_1 = 0.0$ and $\beta_2 = 0.99$, and a fixed learning rate of $1 \times 10^{-4}$ for both generator and discriminator.
+These settings help mitigate training instability, a well-known issue in GANs.
+
+\textbf{Pretraining.}
+Both video and sentence embedding modules are trained with unsupervised objectives.
+We use transformer encoders with hidden dimension 786, 12 layers, 12 heads, and a feedforward size of 2048.
+A dropout of 0.1 and CLS mean pooling are used to obtain global representations. 
+The video embedding module is trained using a variational autoencoder, while the sentence embedding module adopts a denoising autoencoder trained with 60\% deletion noise.
+For video embedding, we use C3D~\cite{Tran2015-uq} on ActivityNet Captions~\cite{Krishna2017-pw} and TSN~\cite{Wang2019-xv} on YouCook2~\cite{Zhou2018-eq}, with random temporal cropping~\cite{Qian2021-mm}. 
+The video and sentence modules are pretrained for 50k and 100k steps, respectively, with batch sizes of 4 and 8.
+
+\textbf{Adversarial Adaptation.} For both event localization and caption generation, we apply adversarial training for 30 epochs.
+The discriminator is updated 10 times per generator update (D:G = 10:1), in line with StyleGAN2~\cite{Zhu2017-cy} to ensure convergence stability.
+R1 gradient penalty regularization ($\gamma = 10$) and spectral normalization are applied to all discriminator layers, further stabilizing training.
+Latent noise vectors are sampled from $\mathcal{N}(0, 1)$ with fixed seeds to ensure both reproducibility and output diversity.
+
+For event localization, we use a ResNet-40~\cite{He2016-qc}-based discriminator. Bridging and captioning discriminators are implemented using two-layer MLPs with 64 hidden units.
+This configuration, combined with adversarial objectives, allows ADVC to generate realistic event-caption pairs that closely follow the distribution of human annotations.
+
+\begin{table*}[t]
+    \center
+    \caption{Comparison of ADVC with state-of-the-art methods on Activinet Captions validation set.}
+    \resizebox{\linewidth}{!}{
+    \begin{tabular}{l|c|ccc|ccc|cc}
+    \hline
+    \multirow{2}{*}{Method} & \multirow{2}{*}{Backbone} & \multicolumn{3}{c|}{Localization} & \multicolumn{3}{c|}{Learnt proposals} & \multicolumn{2}{c}{GT proposals} \\
+                &      & Recall & Precision & F1    & M    & C     & S    & M     & C     \\ \hline
+    DCE~\cite{Krishna2017-pw}       & C3D  &     -   &     -      &  -     & 5.96 & 12.43 & -    & 8.88  & 12.12 \\
+    TDA-CG~\cite{Wang2018-ap}    & C3D  &   -     &      -     &   -    & 5.86 & 7.99  &   -   & 9.69  & -     \\
+    DVC~\cite{Li2018-ll}       & C3D  &     -   &     -      &     -  & 6.93 & 12.61 &      & 10.33 & 25.24  \\
+    MT~\cite{Zhou2018-zu}       & TSN  &     -   &     -      &     -  & 4.98 & 9.25 &      & 11.16 & 47.71  \\
+    SDVC~\cite{Mun2019-ap}      & C3D  & 55.58  & 57.57     & 56.56 & 6.92 &    -   &   -   &   -    &   -    \\
+    MDVC~\cite{Iashin2020-is} & I3D+VGGish  &    -    &     -      &   -    & 6.86 & 7.77 &   -   &    11.07   &  42.67 \\
+    Efficient~\cite{Suin2020-tq} & C3D  &    -    &     -      &   -    & 6.21 & 13.82 &   -   &    -   &   -      \\
+    BMT~\cite{Iashin2020-ln} & I3D+VGGish  &    -    &     -      &   -    & 8.08   & 28.59  &   5.42&    11.26    &  53.65 \\
+    ECHR~\cite{Wang2021-xe}      & C3D  &    -    &     -      &   -    & 7.19 & 14.71 & 3.22 & 10.58 & 14.71  \\
+    PDVC~\cite{Wang2021-zi}      & C3D  & 55.42       & 58.07          & 56.71      & 7.50 & 25.87 & 5.26 & 10.54 & 47.26  \\
+    UEDVC~\cite{Zhang2022-ni}     & C3D  & 59.00  & 60.32     & 59.65      & 7.33 & 26.92 & 5.29 & 11.01 & 52.42  \\
+    Vid2Seq~\cite{Yang2023-fm}   & CLIP+T5 & 52.70   & 53.90      & 53.29      & \textbf{8.50}  & \textbf{30.10}  & 5.80  &    -   &   -     \\
+    ADVC   & C3D & \textbf{63.28}   & \textbf{60.49}      &  \textbf{61.85}     & 8.28  & 29.60  & \textbf{5.98}  &    \textbf{13.63}   &   \textbf{57.41}    \\
+    \hline
+    \end{tabular}
+    }
+    \label{tab:performance_anet}
+\end{table*}
+
+\begin{table}[t]
+    \centering
+    \caption{Comparision with state-of-the-art methods on YouCook2.
+    $^\dag$ Results are derived from the official codebase, and only the visual modality is taken into account to guarantee fairness.}
+    \begin{tabular}{l|c|ccc}
+        \hline
+        Method & Backbone & M    & C     & S \\
+        \hline
+        MT~\cite{Zhou2018-zu} & TSN & - & 3.18 & 6.10 \\
+        ECHR~\cite{Wang2021-xe} & TSN & - & 3.82 & - \\
+        PDVC~\cite{Wang2021-zi} & TSN & 4.74 & 22.71 & 4.42 \\
+        % Vid2Seq~\cite{Yang2023-fm} & TSN+T5 & \textbf{9.30} & \textbf{47.10} & \textbf{7.90} \\
+        Vid2Seq~\cite{Yang2023-fm}$^\dag$ & CLIP & 6.70 & 25.30 & \textbf{5.70} \\
+        ADVC & TSN & \textbf{7.34} & \textbf{38.10} & 5.52 \\
+        \hline
+    \end{tabular}
+    \label{tab:performance_yc2}
+\end{table}
+
+ \begin{table}[t]
+    \centering
+    \caption{Comparision with state-of-the-art methods on ViTT.}
+    \begin{tabular}{l|c|ccc}
+        \hline
+        Method & Backbone & M    & C     & S \\
+        \hline
+        E2ESG~\cite{Zhu2022-mg} & C3D+T5 & 8.10 & 25.00 & - \\
+        Vid2Seq~\cite{Yang2023-fm} & CLIP+T5 & 8.50 & 43.50 & \textbf{13.50} \\
+        ADVC & C3D & \textbf{8.87} & \textbf{44.21} & 13.46 \\
+        \hline
+    \end{tabular}
+    \label{tab:performance_vitt}
+\end{table}
+
+% For transformer-based encoder and decoder, the hidden size $d_m$ of multi-head attention is 768, the number of attention heads is 12, and the encoder and decoder have 12 layers.
+% The feed-forward network used in the encoder and decoder is 2,048 dimensions.
+% The residual and attention dropout ratio is 0.1.
+% To prevent over-fitting, we apply dropout to the visual input embedding layer.
+% We train the video encoding module with adamW~\cite{Loshchilov2017-sm} for 30 epochs with a batch size of 1.
+% For the text denoising autoencoder, we train it with adamW for 50 epochs with a batch size of 8.
+% We vary the learning rate as in~\cite{Vaswani2017-sc} and set warmup steps to 10 epochs, which initially increases linearly from 0 to about 0.00005, and then decreases proportionally to the inverse square root.
+% We implement the generators and discriminators using ResNets-40, for event generation and captioning modules.
+% As suggested in the original paper, we update the discriminators 10 times per update of the generators.
+% We train the event generation and captioning modules with AdamW for 30 epochs with a learning rate of 1e-4.
+
+% \subsubsection{Backbones}
+% We use different backbones for video feature extraction for each dataset.
+% For the ActivityNet Captions dataset and ViTT dataset, we utilize the widely-used C3D~\cite{Tran2015-uq} for fair comparison.
+% For the YouCook2 dataset, we adopt TSN~\cite{Wang2019-xv} as the backbone.
+% Some recent methods have adopted enhanced backbones such as I3D+VGGish (multi-modal)~\cite{Carreira2017-fg,Hershey2017-et} and CLIP (visual transformer)~\cite{Dosovitskiy2021-vn,Radford2021-kx} on the ActivityNet Captions and ViTT datasets.
+
+\subsection{Comparison with State-of-the-Art Methods}
+We compare the performance of ADVC with state-of-the-art methods on the ActivityNet Captions, YouCook2, and ViTT datasets and present the results in Tables~\ref{tab:performance_anet}, \ref{tab:performance_yc2}, and \ref{tab:performance_vitt}, respectively.
+Notably, ADVC achieves state-of-the-art performance on both the ActivityNet Captions and ViTT datasets and it also performs the best among the single modal models on the YouCook2 dataset.
+Particularly, ADVC achieves results that are either comparable to or surpassing those of the Vid2Seq model on the ActivityNet Captions and ViTT datasets.
+It is noteworthy that Vid2Seq employs an advanced backbone, CLIP, and jointly pretrains video and language.
+%Particularly, ADVC achieves comparable or superior performance to the Vid2Seq model, which employ a more advanced backbone, CLIP, and jointly pretrains video and language, 
+Additionally, ADVC outperforms E2ESG, a text-only pretraining approach, on the ViTT dataset.
+These results demonstrate the efficacy of ADVC's unsupervised pretraining coupled with its adversarial adaptation approach.
+
+To further demonstrate ADVC's effectiveness, we delve into an exhaustive comparative analysis that takes into account the attributes of the methods' backbones and downstream tasks.
+Despite utilizing a single-modal C3D~\cite{Tran2015-uq} backbone, ADVC attains comparable or even superior performance compared to models equipped with enriched and multimodal backbones.
+Vid2Seq, on the other hand, adopts a transformer-based CLIP~\cite{Radford2021-kx} model for its visual component, benefiting from pretrained on an expansive dataset containing 400 million images.
+It leverages T5~\cite{Raffel2020-fv}, a pretrained language model trained on the vast C4 dataset (1.56 trillion words), as its textual backbone.
+CLIP is pretrained on a significantly larger dataset than C3D, with 400 times more training samples. 
+%Similarly, T5 is pretrained on a much larger dataset than WikiHow, with 1,200 times more training samples.
+Similarly, T5's pretraining dataset outshines WikiHow's by a factor of 1,200.
+% Our approach remains effective in terms of sample and computational efficiency, yielding comparable performance.
+Nevertheless, our approach, utilizing solely the visual backbone of C3D, achieves superior results across all benchmark datasets, surpassing most metrics, indicating its effectiveness.
+
+\begin{table}[t]
+    \centering
+    \caption{Comparision with state-of-the-art methods on MSR-VTT and MSVD for video clip captioning.}
+    \begin{tabular}{l|ll|ll}
+    \hline
+    \multicolumn{1}{c|}{\multirow{2}{*}{Method}} & \multicolumn{2}{c|}{MSR-VTT}                   & \multicolumn{2}{c}{MSVD}                      \\
+    \multicolumn{1}{c|}{}                        & \multicolumn{1}{c}{C} & \multicolumn{1}{c|}{M} & \multicolumn{1}{c}{C} & \multicolumn{1}{c}{M} \\ \hline
+    ORG-TRL~\cite{Zhang2020-rl}                                       & 50.9                  & 28.8                   & 95.2                         & 36.4                     \\
+    SwinBERT~\cite{Lin2022-wi}                                       & 53.8                  & 29.9                   & 120.6                     & 41.3                     \\
+    MV-GPT~\cite{Seo2022-ok}                                       & 60.0                  & 29.9                   & -                     & -                     \\
+    Vid2Seq~\cite{Yang2023-fm}                                      & 64.6                  & 30.8                   & 146.2                 & 44.5                  \\
+    ADVC                                         & 61.7                      & 29.6                       & 138.7                      & 41.2                      \\ \hline
+    \end{tabular}
+    \label{tab:performance_video_clip}
+\end{table}
+
+\textbf{Video clip captioning.}
+We compare the performance of ADVC with state-of-the-art methods on the MSR-VTT and MSVD datasets for video clip captioning, as shown in Table~\ref{tab:performance_video_clip}.
+The evaluation metrics used are CIDEr (C) and METEOR (M).
+As observed, ADVC demonstrates competitive performance on both datasets.
+On MSR-VTT, ADVC achieves a CIDEr score of 61.7, which surpasses the scores of ORG-TRL and SwinBERT and closely follows Vid2Seq, the top performer in this dataset.
+The METEOR score of 29.6 for ADVC is also higher than that of ORG-TRL and comparable to MV-GPT, indicating robust performance in generating relevant captions.
+On the MSVD dataset, ADVC attains a CIDEr score of 138.7, significantly outperforming SwinBERT and ORG-TRL but falling slightly behind Vid2Seq.
+The METEOR score for ADVC is 41.2, which is on par with SwinBERT and demonstrates a substantial improvement over ORG-TRL.
+These results highlight ADVC's strong capability in video captioning tasks, achieving results that are either competitive with or superior to other state-of-the-art models.
+Particularly noteworthy is ADVC's performance relative to Vid2Seq, a model leveraging advanced pretraining techniques and a sophisticated backbone.
+Despite the less complex architecture, ADVC's results are impressive, underscoring the efficacy of its approach.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{figures/advc_qualitative}
+    \caption{Example of ADVC's dense video captioning on the ActivityNet Captions validation set.}
+    \label{fig:qualitative}
+\end{figure*}
+
+\subsection{Qualitative Results}
+In Figure~\ref{fig:qualitative}, we present an illustrative example of dense video captioning outcomes for videos in the ActivityNet Captions validation set.
+This result clearly shows that ADVC performs localization and captioning similar to the ground-truth pattern.
+In particular, ADVC is based on GANs, which empowers it to generate multiple events and captions for a given video by modulating the noise parameter $z$.
+Thus, we present two distinct options for a single video, each accompanied by a unique $z$ value.
+%Option 1 focuses on the team's activities, which is similar to the ground-truth, while in option 2, ADVC provides a description of the spectators (black event).
+In Option 1, the focus is directed toward the activities of the team, closely resembling the ground-truth depiction. 
+Conversely, in Option 2, ADVC provides a description of the spectators' presence (represented by the black event).
+%These results demonstrate that ADVC has the unique advantage of not only achieving quantitatively superior performance but also being able to adjust the variation of its output to account for subjectivity.
+These results unequivocally highlight ADVC's unique advantage: not only does it achieve quantitatively superior performance, but it also possesses the capacity to flexibly tailor the variability of its outputs to account for subjectivity.
+
+\begin{table}[t]
+    \centering
+    \caption{The efficacy of unsupervised pretraining in ADVC.
+    V and L stand for video and language, respectively.}
+    \begin{tabular}{cc|ccc|ccc}
+    \hline
+    \multicolumn{2}{c|}{Pretrainig} & \multicolumn{3}{c|}{ActivityNet Captions} & \multicolumn{3}{c}{YouCook2} \\
+    V & L & M & S & F1 & M & S & F1 \\
+    \hline
+    \multicolumn{2}{c|}{No pretraining} & 5.56 & 3.24 & 58.89 & 3.03 & 2.72 & 25.74 \\
+    \checkmark &  & 6.94 & 4.99 & 61.85 & 3.89 & 3.45 & 29.33 \\
+    & \checkmark & 7.40 & 5.13 & 58.89 & 7.11 & 5.42 & 25.74 \\
+    \checkmark & \checkmark & \textbf{8.28} & \textbf{5.98} & \textbf{61.85} & \textbf{7.34} & \textbf{5.52} & \textbf{29.33} \\
+    \hline
+    \end{tabular}
+    \label{tab:ablation_pretraining}
+\end{table}
+
+\subsection{Ablation Study}
+We conduct a series of ablation studies to showcase the efficacy of unsupervised pretraining and adversarial adaptation in ADVC.
+We undertake a performance comparison involving four ADVC variants, aiming to gauge the impact of unsupervised pretraining.
+These versions include: (\romannum{1}) no pretraining, (\romannum{2}) video-only pretraining, (\romannum{3}) language-only pretraining, and (\romannum{4}) full pretraining.
+We exclusively utilize the dataset of the downstream task for modules that are not pretrained.
+Table~\ref{tab:ablation_pretraining} demonstrates that ADVC yields substantial performance enhancements resulting from video and language pretraining. 
+Particularly, improvements emanating from language pretraining have a significant impact.
+
+Table~\ref{tab:ablation_pretraining} demonstrates that ADVC yields substantial performance enhancements resulting from video and language pretraining.
+The table clearly illustrates the remarkable improvements in performance metrics across different tasks.
+Specifically, the model with no pretraining shows the lowest scores, highlighting the challenges of starting from scratch.
+Introducing video-only pretraining significantly boosts performance, as evidenced by increases in the M, S, and F1 scores across both ActivityNet Captions and YouCook2 datasets.
+Language-only pretraining also results in noticeable improvements, especially in the YouCook2 dataset, indicating the strong influence of language understanding in certain contexts.
+The most significant gains are observed with full pretraining (both video and language), where the model achieves the highest scores across all metrics.
+This underscores the complementary benefits of integrating both modalities during the pretraining phase.
+The enhancements from language pretraining alone suggest that even without video data, the model can leverage textual information to enhance its performance substantially.
+
+\begin{table}[t]
+    \centering
+    \caption{The efficacy of adversarial adaptation in ADVC.}
+    \begin{tabular}{cc|ccc|ccc}
+        \hline
+        \multicolumn{2}{c|}{Adversarial} & \multicolumn{3}{c|}{ActivityNet Captions} & \multicolumn{3}{c}{YouCook2} \\
+        Loc. & Cap. & M & S & F1 & M & S & F1 \\
+        \hline
+        \multicolumn{2}{c|}{No adversarial} & 6.96 & 4.94 & 55.70 & 4.00 & 3.83 & 26.55 \\
+        \checkmark &  & 8.01 & 5.71 & 61.85 & 4.11 & 3.79 & 29.33 \\
+        & \checkmark & 7.19 & 5.02 & 54.05 & 6.80 & 4.81 & 23.94 \\
+        \checkmark & \checkmark & \textbf{8.28} & \textbf{5.98} & \textbf{61.85} & \textbf{7.34} & \textbf{5.52} & \textbf{29.33} \\
+        \hline
+    \end{tabular}
+    \label{tab:ablation_adaptation}
+\end{table}
+
+Table~\ref{tab:ablation_adaptation} highlights the efficacy of adversarial adaptation in ADVC, showing substantial performance enhancements when adversarial strategies are employed.
+The table presents metrics across two datasets: ActivityNet Captions and YouCook2.
+When no adversarial adaptation is used, the model achieves the lowest scores, indicating the baseline performance.
+Specifically, the scores are 6.96 (M), 4.94 (S), and 55.70 (F1) for ActivityNet Captions, and 4.00 (M), 3.83 (S), and 26.55 (F1) for YouCook2.
+Introducing adversarial adaptation for localization alone significantly boosts the performance, with scores rising to 8.01 (M), 5.71 (S), and 61.85 (F1) for ActivityNet Captions, and 4.11 (M), 3.79 (S), and 29.33 (F1) for YouCook2.
+This indicates the impact of adversarial localization on improving model robustness and accuracy.
+Adversarial adaptation for captions alone also results in improvements, particularly in the YouCook2 dataset, where scores increase to 6.80 (M), 4.81 (S), and 23.94 (F1).
+However, the improvements are more modest in ActivityNet Captions, with scores of 7.19 (M), 5.02 (S), and 54.05 (F1).
+The most significant gains are observed when both localization and caption adversarial adaptations are applied together.
+The model achieves the highest scores across all metrics: 8.28 (M), 5.98 (S), and 61.85 (F1) for ActivityNet Captions, and 7.34 (M), 5.52 (S), and 29.33 (F1) for YouCook2.
+This underscores the complementary benefits of integrating both adversarial strategies, enhancing the model's ability to generalize and perform well across diverse tasks and datasets.
+
+\subsection{Effectiveness of Sentence Embedding}
+The ADVC captioning process involves two distinct steps: pretraining and latent vector generation.
+This process differs significantly from the traditional auto-regressive methods such as LSTMs or Transformers.
+While ADVC is effective for handling non-deterministic tasks, it necessitates a sufficiently dense and even latent space to adequately represent various videos.
+This section examines the embedding space of sentences not present in the training data to illustrate the expressive nature of the sentence embedding module and its coverage of diverse sentence types.
+We analyze the embedding vector values for all sentences in the ActivityNet Captions validation set using the sentence embedding module that was pre-trained on unlabeled text corpora.
+To enhance convenience, we employ the t-SNE algorithm to reduce the embedding vector from 768 dimensions to 2 dimensions.
+Figure~\ref{fig:latent_space} illustrates the embedding vector of all sentences at pretraining steps 0 and 10,000.
+Step 0 displays the outcomes of the initial pretrained TSDAE~\cite{Wang2022-um} model, while step 10000 exhibits the outcomes of the fine-tuned embedding module.
+The uneven distribution of embedding vectors is observed at step 0, despite the model being adequately trained on numerous sentences.
+A sufficiently fine-tuned embedding module suggests better generalization to a variety of representations with an even distribution of sentences.
+
+\begin{figure}
+    \centering
+    \subfloat[Step=0]{
+        \label{subfig:a}
+        \includegraphics[width=0.49\linewidth]{figures/advc_scatter_0}
+    }
+    % \hfill
+    \subfloat[Step=10,000]{
+        \label{subfig:b}
+        \includegraphics[width=0.49\linewidth]{figures/advc_scatter_10000}
+    }
+    \caption{Visualization of the embedding vectors of sentences in the ActivityNet Captions validation set.
+    To facilitate visualization, we employ the t-SNE algorithm to reduce the dimensionality of the embedding space $\in \mathbb{R}^{768}$ to two dimensions.}
+    \label{fig:latent_space}
+\end{figure}

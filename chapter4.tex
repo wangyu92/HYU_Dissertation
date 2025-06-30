@@ -1,0 +1,592 @@
+% !TEX root = ./main.tex
+
+\chapter{Parallel Pathway: Simultaneous Localization and Caption Generation}
+\label{chap:parallel_pathway}
+
+\section{Limitations of Sequential Methods and Need for Parallel Approach}
+
+With the advent of large-scale video activity datasets \cite{karpathy2014large,caba2015activitynet,kay2017kinetics}, video understanding has become one of the hot topics in computer vision. 
+Based on this interest, research on video understanding has successfully addressed various tasks, starting with activity classification and detection, and more complex video captioning \cite{venugopalan2015sequence,venugopalan2015translating,yao2015describing,pan2016hierarchical,pan2016jointly,baraldi2017hierarchical,gan2017semantic,pan2017video,yu2017end,wang2018reconstruction,liu2018fine,xiao2019video,zhu2020understanding,bhooshan2022multimodal,li2022adaptive}.
+Videos naturally contain multiple events, such as one or more objects and motions appearing simultaneously at various lengths, however, the above-mentioned approaches provide limited information, e.g., only a sentence for a short trimmed video.
+This lack of detail is not sufficient to describe the overall storyline of the video.
+
+\begin{figure}[t]
+  \centering
+%   \includegraphics[width=\linewidth]{figures/approach_overview}
+   \includegraphics[width=\linewidth]{figures/ppvc_fig1}
+   \caption{A summary of comparisons between existing methods and our approach to dense video captioning.}
+   \label{fig:intro_approaches}
+\end{figure}
+
+Recently, many methods for dense video captioning have been proposed for more detailed and rich video descriptions \cite{krishna2017dense,li2018jointly,wang2018bidirectional,zhou2018end,mun2019streamlined,deng2021sketch,wang2021end}.
+They can be classified into three classes from an architectural point of view: bottom-up, top-down, and parallelism.
+The bottom-up method detects the temporal regions (i.e., events) that are the core of the video story, and then generates a sentence describing each event.
+A top-down approach is to describe the entire video in a paragraph and localize each sentence to the timeline of the video.
+The parallel approach simultaneously decodes sentences and events from encoded video features.
+
+A lot of work on various approaches has resulted in significant performance improvements, but there is still room for improvement.
+Methods with a bottom-up or top-down sequential architecture suffer from the fact that the performance of subsequent modules is highly dependent on the preceding ones.
+No matter how sophisticated the captioning module is, it is exceedingly difficult to construct polite phrases for poorly defined events using the bottom-up strategy.
+For this reason, many sequential pipeline solutions (\cite{krishna2017dense,li2018jointly,wang2018bidirectional,mun2019streamlined,deng2021sketch}) cannot be trained end-to-end and require relatively complex training techniques.
+In addition, the majority of sequential approaches (\cite{krishna2017dense,li2018jointly,wang2018bidirectional,zhou2018end,mun2019streamlined,wang2020event}) generate many event proposals with the event proposal network and eliminate duplicate event proposals with handcrafted algorithms such as MNS.
+These algorithms require additional hyper-parameters (e.g., threshold) that greatly affect the outcome.
+
+To address this problem, parallel decoding approaches have been proposed recently \cite{wang2021end}.
+They improve performance by removing sequential dependencies; however, they introduce the risk of information bottlenecks at the branch point. 
+The bottleneck limits performance by preventing the flow of information that requires localization and captioning.
+In other words, they still have an ``encode-then-decode'' procedure, so the bottleneck in the branch leads to poor results.
+For instance, the most recently proposed method \cite{wang2021end}, a parallel decoding approach with an event counter, is restricted to creating a large number of events and detailed descriptions for long video.
+
+
+With careful analysis of the aforementioned challenges, we obtain the following inferences for high-quality dense video captioning. 
+A parallel architecture could be employed to reduce the dependency between the captioning and localization modules while eliminating the branch's bottleneck. 
+Even though the parallel architecture helps get rid of dependencies between modules, branch points still need to be carefully designed to avoid bottlenecks.
+
+This work proposes PPVC, a parallel pathway dense video captioning that breaks sequential processing and mitigates the negative impacts of preceding modules on succeeding modules.
+Unlike the bottom-up or top-down pipeline adopted by most existing methods, our proposed framework performs captioning and localization at the same time as depicted in Figure \ref{fig:intro_approaches}.
+Moreover, to mitigate the bottleneck of information, a challenge of the existing parallel decoding approach, we pass all potential information at branch points, filter out unnecessary things just before decoding, and introduce a multi-stack cross-attention mechanism to exploit multiple information for localization and capturing.
+
+
+% %%%%%%%%%%%%%%%%%%%%%
+
+We evaluate the performance of PPVC on the ActivityNet Captions datasets \cite{krishna2017dense}.
+PPVC achieves superior performance objectively and subjectively compared with state-of-the-art solutions.
+Specifically, PPVC not only overcomes the inherent problems of the sequential paradigm but also outperforms existing bottom-up and top-down methods.
+%Specifically, PPVC not only surpasses methods of the existing sequential paradigm but also excels in state-of-the-art parallel approach methods in most metrics.
+Compared with the state-of-the-art parallel approaches, PPVC is the best in most metrics.
+Regarding the quality of the outcomes, PPVC provides a detailed and fluent explanation with an adequate number of events.
+The main contributions of this paper are summarized as follows.
+\begin{itemize}
+  \item We propose a parallel pathway dense video framework, PPVC by alleviating the bottleneck at the branch point.
+  \item PPVC provides richer/fluent descriptions compared to the state-of-the-art parallel approaches and outperforms the other methods in most metrics.
+  % \item We propose a parallel pathway dense video framework, PPVC by redesigning the core modules, localization and captioning to alleviate the sequential dependence.
+  % PPVC further improves upon most existing approaches, the two-step sequential approach.
+  % \item We further improve the existing parallel dense video captioning framework by alleviating the bottleneck at the branch point using the representation organizer and a newly proposed multi-stack cross attention module.
+  % \item PPVC provides richer/fluent descriptions compared to the state-of-the-art parallel approaches and outperforms the other methods in most metrics.
+  % \item We carefully evaluate the number of events generated by PPVC in addition to the widely used METEOR metric, and find that it generates more event and sentence sets.
+\end{itemize}
+
+The rest of this paper is organized as follows.
+In Section \ref{sec:related_work}, we discuss the related work on the dense video captioning task and differentiate our work from the state-of-the-art.
+We propose PPVC, a parallel pathway dense video captioning method in Section \ref{sec:method}.
+Section \ref{sec:experiments} evaluates the performance of PPVC in detail.
+We conclude the paper in Section \ref{sec:conclusion}.
+
+\section{Parallel Pathway Dense Video Captioning (PPVC)}
+
+This section describes the core ideas and the network architecture of PPVC in detail.
+
+\begin{algorithm}[t]
+  \caption{Parallel Pathway Dense Video Captioning}
+  \label{algo:ppvc}
+  \begin{algorithmic}[1]
+    \STATE \textbf{Procedure} $\textsc{PPVC}(\mathcal{V})$
+    \STATE $\mathbi{H}_v \gets \mathcal{E}(\mathcal{V})$ \COMMENT{Encode video}
+    \FOR{$k = 1$ \TO $K$}
+      \STATE $\mathbi{H}_o \gets \mathcal{O}(\mathbi{H}_v, \textbf{q}_k)$ \COMMENT{Organize features}
+      \STATE $\mathbi{H}_o^{\text{gated}} \gets \mathbi{H}_o \times \mathcal{G}(\mathbi{H}_o)$ \COMMENT{Filter out}
+      \STATE \COMMENT{Branch point!}
+      \STATE $s_{k} \gets \mathcal{S}(\mathbi{H}_o^{\text{gated}}, \mathbi{H}_v)$ \COMMENT{Describe}
+      \STATE $E_{k} \gets \mathcal{L}(\mathbi{H}_o^{\text{gated}}, \mathbi{H}_v)$ \COMMENT{Localize}
+    \ENDFOR
+    \RETURN $\{E_{k}\}_{k=1}^{K},\;\{s_{k}\}_{k=1}^{K}$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{Overview}
+For a given video, dense video captioning is the task of detecting multiple overlapping events and generating sentences accordingly.
+Existing methods generally divide the whole process into two sub-problems, event detection, and sentence generation, and solve them one by one in order.
+The performance of the two modules is tightly coupled, and this sequential processing method causes a major flaw: the result of the preceding module greatly affects the performance of the subsequent module.
+However, parallel architectures have the challenge that the bottleneck of information at branch points can limit the outcomes.
+Therefore, it is critical to decouple the dependency between the two modules by breaking the sequential processing paradigm while not occurring a bottleneck.
+
+With this consideration, we construct two sub-problems of dense video captioning in parallel.
+We first organize the encoded video features into highly relevant ones to understand the core context of the video, rather than directly generating events and sentences from the video.
+PPVC consists of five modules: video encoder $\mathcal{E}$, representation organizer $\mathcal{O}$, event localizer $\mathcal{L}$, sentence generator $\mathcal{S}$, gating network $\mathcal{G}$ as depicted in Figure \ref{fig:architecture}. 
+
+Given a video $\mathcal{V}$, it is converted to a hidden state vector $\mathbi{H}_v$ by the video encoder $\mathcal{E}$.
+$\mathbi{H}_v$ is fed into the representation organizer $\mathcal{O}$ to organize the encoded video features that determine the context of the video storyline, which is the branch point of the parallel pathway without any bottleneck.
+The event localizer $\mathcal{L}$ and sentence generator $\mathcal{S}$ then localize the events $\{e_i\}_{i=1}^{n}$ and generate sentences $\{s_i\}_{i=1}^{n}$, respectively, while further mitigating bottlenecks using multi-stack cross attention.
+The gating network $\mathcal{G}$ controls the flow at branch points and refines information by blocking the flow of unnecessary event queries.
+The procedure of PPVC is described in Algorithm \ref{algo:ppvc}.
+
+\subsection{Video Encoder}
+
+The goal of the video encoder $\mathcal{E}$ is to extract the hidden state $\mathbi{H}_v$ by encoding the spatiotemporal context of the video $\mathcal{V}$.
+Our video encoder consists of a convolution network and a sequential data encoder.
+In particular, we adopt the C3D \cite{tran2015learning} network and the transformer encoder \cite{vaswani2017attention} with multi-head attention (MA) to understand the long-term temporal context of a video.
+First, the video encoder divides a given video $\mathcal{V}$ into non-overlapping segments of fixed length (e.g., 8 frames).
+The C3D network takes a segment as input and extracts features $\mathbi{F}_v \in \mathbb{R}^{T \times d_f}$, where $T$ is the number of segments and $d_f$ is the dimension of features.
+We apply a linear transformation to feed the video feature $\mathbi{F}_v$ of dimension $d_f$ to the transformer encoder \cite{vaswani2017attention} of dimension $d_m$ as follows:
+\begin{equation}
+  \mathbi{H}_v^0 = \text{PE} (\text{Linear} \left( \mathbi{F}_v \right) )
+  \label{eq:linear_transformation}
+\end{equation}
+Then, after applying the positional encoding (i.e., $\text{PE}(\cdot)$) to $\text{Linear}(\bm{F}_v)$, we start with the input $\mathbi{H}_v^0$.
+
+The transformer encoder, which contains multiple $N$ layers, is the core of our video encoder.
+Each layer is made up of self-attention and feed-forward modules, and at the end of each module, there is a residual connection and layer normalization.
+The transformer encoder outputs $\bm{H}_v^{l+1}$  in one cycle given $\mathbi{H}_v^l$, and the output of the last cycle---i.e., the last layer---is $\mathbi{H}_v$.
+The following two equations can be used to describe the entire procedure:
+\begin{equation}
+  \mathbi{H}_v^{l+1} = \text{FFN}\left(\Psi \left(H_v^l + \text{MA}\left( \mathbi{H}_v^l, \mathbi{H}_v^l, \mathbi{H}_v^l \right) \right)\right)
+  \label{eq:video_encoder_self_attention}
+\end{equation}
+\begin{equation}
+  \text{FFN}(x) = \text{max} \left(0, x\mathbi{W}_1 + b_1 \right)\mathbi{W}_2 + b_2
+  \label{eq:video_encoder_feed_forward}
+\end{equation}
+\begin{equation}
+    \text{MA}(\bm{Q}, \bm{K}, \bm{V}) = \text{Cat}(\{\text{ATT}_i(\bm{Q}, \bm{K}, \bm{V})\}_{i=1}^h)W_O
+  \end{equation}
+  \begin{equation}
+    \text{ATT}(\bm{Q}, \bm{K}, \bm{V}) = \text{softmax}( \frac{(\bm{QW}_Q)(\bm{K}\bm{W}_K)^T}{\sqrt{d_m}} ) (\bm{VW}_V)
+  \label{eq:video_encoder_att}
+\end{equation}
+where, $\Psi\left(\cdot\right)$ represents the layer normalization function.
+$\text{Cat}(\cdot)$ denotes vector concatenation and $\bm{W}_*$ are trainable parameters.
+We repeat the above process as many times as the number of encoder layers.
+Finally, the output of the video encoder is the output of the last layer $\mathbi{H}_v$.
+
+Specifically, the multi-head attention module contains the following two classes of trainable parameters: $\bm{W}_{\{\bm{K},\bm{Q},\bm{V}\}}$ for the query ($\bm{Q}$), key ($\bm{K}$), and value ($\bm{V}$) attention matrix, and $\bm{W}_O$, which is in charge of the output by concatenating attention heads.
+The attention head is calculated by scaled dot-product attention, as defined in Equation (\ref{eq:video_encoder_att}), with the same $\bm{H}_v^l$ being served into $\bm{K}$, $\bm{Q}$, and $\bm{V}$ for self-attention.
+The final output of multi-head attention is then produced by concatenating all attention heads and applying the weight of $\bm{W}_O$. 
+Two linear transformations and a ReLU \cite{agarap2018deep} activation function make up the feed-forward network $\text{FFN}(\cdot)$.
+The first linear transformation (i.e., $\bm{W}_1$) and ReLU activation are applied to the output $x$ of multi-head attention. Then it goes through a second linear transformation (i.e., $\bm{W}_2$) with dropout as provided in Equation (\ref{eq:video_encoder_feed_forward}).
+
+The representation organizer inherits the transformer's learning principle.
+Specifically, with positional encoding and sequentially input video features, the transformer encoder learns the self-attention between features and organizes features for localization and captioning.
+Intuitively, each hidden vector in the outputs of the transformer encoder implicitly contains information for localization and captioning. Therefore, by training in an end-to-end manner from the input to the localization and captioning heads, the representation organizer is trained toward the optimal.
+
+\subsection{Representation Organization}
+\label{subsec:method_representation_organization}
+Before entering the parallel pathway, we introduce a representation organizer that organizes key encoded video features in the video's spatiotemporal context and uses them as intermediate information for event localization and sentence generation.
+The goal of the representation organizer is to extract a representation of salient temporal regions in a video while implicitly producing all potential events.
+Specifically, given a video $\mathcal{V}$, representation organizer outputs multiple representations $\mathbi{H}_o$ considering the entire video story.
+Later, each representation serves as the core information for an event (i.e., timestamp and sentence), resulting in high-quality event localization and captioning.
+
+For this, we adopt a query-based transformer decoder \cite{carion2020end,zhu2021deformable} because of its high performance and efficiency in object detection tasks using transformers \cite{vaswani2017attention}.
+Given the $\mathbi{H}_v$ obtained by the video encoder and the input organized representation vector $\mathbi{H}_o^0$, the representation organizer computes the hidden state $\mathbi{H}_o$ as follows:
+\begin{equation}
+  \mathbi{H}_o^{\text{self}} = \Psi \left( \mathbi{H}_w^l + \text{MA} \left(\mathbi{H}_o^l, \mathbi{H}_o^l, \mathbi{H}_o^l \right) \right)
+  \label{eq:representation_organization_self_attention}
+\end{equation}
+\begin{equation}
+  \mathbi{H}_o^{\text{cross}} = \Psi \left( \mathbi{H}_o^{\text{self}} + \text{MA} \left( \mathbi{H}_o^{\text{self}}, \mathbi{H}_v, \mathbi{H}_v \right) \right)
+  \label{eq:representation_organization_cross_attention}
+\end{equation}
+\begin{equation}
+  \mathbi{H}_o^{l+1} = \Psi \left( \mathbi{H}_o^{\text{cross}} + \text{FFN}\left( \mathbi{H}_o^{\text{cross}} \right) \right)
+  \label{eq:representation_organization_ffn}
+\end{equation}
+where, MA($\cdot$), FFN($\cdot$) and $\Psi \left(\cdot\right)$ are the same as used in Equation \ref{eq:video_encoder_self_attention} and Equation \ref{eq:video_encoder_feed_forward}.
+$l$ is the sequence number of the transformer decoder.
+The output of the last layer is $\mathbi{H}_o \in \mathbb{R}^{K \times d_m}$ ($K$ is the number of generated representations).
+
+Here, as described above, we set the number of event queries to a fixed number of $K$ without depending on the event counter.
+The event counter is likely to output the average number regardless of the content based on the statistics of the entire dataset (Section \ref{sec:experiments}).
+We control the number of events by generating events for fixed $K$ event queries (i.e., the maximum number of events that PPVC can generate.) and removing unnecessary ones.
+
+\textbf{Choice of $K$.}
+Determining $K$ requires great care as it limits the maximum number of events that PPVC can generate.
+With a high $K$, PPVC generates many events, so recall can be high, but precision is not guaranteed. 
+On the other hand, a low $K$ increases precision, but does not guarantee high recall in videos containing many events.
+Therefore, we empirically set $K$ to 10 to measure the F1 score by varying $K$ to strike the balance between recall and precision (details in Section \ref{subsec:experiments-ablation_study}).
+
+\subsection{Event Localizer}
+\label{subsec:method_event_localizer}
+The goal of the event localizer is to predict the center and duration of an event in the video corresponding to an organized representation.
+Common problems with the event localizer are that it is difficult to predict how many events are included in the video, and the events must be determined by considering the correlations between events.
+Our event localization approach implicitly determines the number of events (i.e., the number of organized representations) in the previous step (representation organization), without an event counter or a proposal generation network.
+Therefore, this section only focuses on the localization of the timestamps corresponding to the organized representations in the entire video.
+
+The event localizer is based on the transformer decoder \cite{vaswani2017attention}.
+The difference from the basic transformer decoder is that it does not have a self-attention block (i.e., not auto-regressive) and directly regresses the timestamp through several convolutional neural networks after the cross-attention block.
+For each organized representation $\mathbi{H}_o$, we use a multi-head attention module to incorporate the entire video storyline (i.e., encoded video feature $\mathbi{H}_v$) as follows:
+\begin{equation}
+  \mathbi{H}_e^{\text{cross}} = \Psi \left( \mathbi{H}_e^{\text{self}} + \text{MA} \left( \mathbi{H}_e^{\text{self}}, \mathbi{H}_{v}, \mathbi{H}_{v} \right) \right)
+  \label{eq:event_localizer_cross_attention}
+\end{equation}
+We then apply several 1D convolutional layers on the temporal dimension and predict the ratio of center and duration timestamps to the entire video using two linear regression heads.
+
+\subsection{Sentence Generator}
+\label{subsec:method-sentence_generator}
+The goal of the sentence generator $\mathcal{S}$, the second part of the parallel pathway, is to receive organized representations $\{\mathbi{H}_o^i\}_{i=0}^{N}$ from the representation organizer and generate sentences ${\{s_i\}}_{i=0}^{N}$: $\mathcal{S}\left({\{\mathbi{H}_o^i\}_{i=0}^{N}}\right) \rightarrow {\{s_i\}}_{i=0}^{N}$.
+One of the important points in sentence generation in a dense video captioning task is to maintain coherency.
+There are several approaches to this, but we guarantee coherency between sentences by directly incorporating the textual features of the video.
+Directly merging video features instead of merging past sentences improves sentence coherency while avoiding referencing ill-defined words in the last sentence.
+
+Our sentence generator is based on a transformer decoder \cite{vaswani2017attention}, and most of the process is similar to $\mathcal{O}$.
+The difference from the basic transformer decoder is that there are two hidden states (i.e., two pairs of key and value) that are input to the cross-attention block: the visual hidden state $\mathbi{H}_v$ and the organized representation $\mathbi{H}_o$.
+Therefore, we design a multi-stack cross-attention module that refers to multiple hidden states.
+This applies the multi-head attention module sequentially to two or more hidden states by stacking, which makes it possible to utilize various information during decoding.
+
+The sentence generation process using multi-stack cross-attention is as follows:
+\begin{equation}
+  \mathbi{H}_s^{\text{cross}^1} = \Psi \left( \mathbi{H}_s^{\text{self}} + \text{MA} \left( \mathbi{H}_s^{\text{self}}, \mathbi{H}_{v}, \mathbi{H}_{v} \right) \right)
+  \label{eq:setence_constructor_cross1_attention}
+\end{equation}
+\begin{equation}
+  \mathbi{H}_s^{\text{cross}^2} = \Psi \left( \mathbi{H}_s^{\text{cross}^1} + \text{MA} \left( \mathbi{H}_s^{\text{cross}^1}, \mathbi{H}_{w}, \mathbi{H}_{w} \right) \right)
+  \label{eq:setence_constructor_cross2_attention}
+\end{equation}
+Note that we omit positional encoding, self-attention, and feed-forward processes because they are the same as the representation organizer (Section \ref{subsec:method_representation_organization}).
+
+\subsection{Gating Network}
+\label{subsec:method-gating_network}
+In addition to the modules described above, we employ a gating network that signals the end of a sequence of the representation organizer and controls the flow into parallel pathways.
+Since the representation organizer creates all of the possible organized representations, it is necessary to prevent the generation of redundant or unnecessary events by indicating the end of the sequence and limiting the flow of parallel pathways.
+In other words, the gating network consequently serves to increase precision in event localization.
+Our gating network outputs a confidence score for the organized representation through the sigmoid activation function after linear transformation as follows:
+\begin{equation}
+  g(x) = \sigma (\text{Linear}(x))
+\end{equation}
+\begin{equation}
+  \mathbi{H}_o^{\text{gated}} = g(\mathbi{H}_o) \cdot \mathbi{H}_o
+  \label{eq:gating_network}
+\end{equation}
+It is simple but effective, prevents unnecessary representation generation, and as a result helps high-quality localization and captioning.
+
+\section{Experimental Evaluation}
+\subsection{Dataset}
+\label{subsec:experiments-dataset}
+
+% \begin{table*}[t]
+\begin{sidewaystable}
+  \centering
+  \caption{
+    Performance comparison of the event localization.
+  }
+  \begin{tabular}{@{}l|c|ccccc|ccccc|c@{}}
+    \hline
+    % Method & Recall (@tIoU) & Precision (@tIoU) \\
+    % & \multicolumn{5}{l}{} & \multicolumn{5}{l}{} \\
+    \multirow{2}{*}{Method} & \multirow{2}{*}{PN} & \multicolumn{5}{|c|}{Recall (@tIoU)} & \multicolumn{5}{c}{Precision (@tIoU)} & \multirow{2}{*}{F1} \\
+    && @0.3 & @0.5 & @0.7 & @0.9 & Average & @0.3 & @0.5 & @0.7 & @0.9 & Average & \\
+    \hline
+    MFT'18 \cite{xiong2018move} & $\checkmark$ & 46.18 & 29.76 & 15.54 & 5.77 & 24.31 & 86.34 & 68.79 & 38.30 & 12.19 & 51.41 & 33.01 \\
+    SDVC'19 \cite{mun2019streamlined} & $\checkmark$ & 93.41 & 76.40 & 42.40 & 10.10 & 55.58 & 96.71 & 77.73 & 44.84 & 10.99 & 57.57 & 56.56 \\
+    PDVC'21 \cite{wang2021end} &  & 89.47 & 81.91 & 44.63 & 15.67 & 55.42 & 97.16 & 78.09 & 42.68 & 14.40 & 58.07 & 56.71 \\
+    \textbf{PPVC} &  & 91.71 & 78.90 & \textbf{56.73} & \textbf{20.60} & \textbf{61.98} & 96.23 & 73.80 & 37.66 & 12.61 & 55.07 & \textbf{58.33} \\
+    \hline
+  \end{tabular}
+  
+  \label{tab:eval_event_localizer}
+% \end{table*}
+\end{sidewaystable}
+
+% \begin{table*}[tp]
+\begin{sidewaystable}
+  \centering
+  \caption{
+    Performance comparison of the dense video captioning (ActivityNet Captions validation set).
+  }
+  \begin{tabular}{@{}l|ccc|cc|ccccccc@{}}
+    \hline
+    % Method & Recall (@tIoU) & Precision (@tIoU) \\
+    % & \multicolumn{5}{l}{} & \multicolumn{5}{l}{} \\
+    % \multirow{2}{*}{Method} & \multicolumn{6}{|c|}{with GT events} & \multicolumn{6}{c}{with predicted events} \\
+    \multirow{2}{*}{Method} & \multicolumn{3}{|c|}{Feature} & \multicolumn{2}{|c|}{Training} \\
+     & C3D & TSN & Optical & CE & RL & B@1 & B@2 & B@3 & B@4 & C & M\\
+     \hline
+    DCE'17 \cite{krishna2017dense}        & $\checkmark$ & & & $\checkmark$ & & 10.81 & 4.57  & 1.90  & 0.71 & 12.43 & 5.69\\
+    TDA-CG'18 \cite{wang2018bidirectional} & $\checkmark$ & & & $\checkmark$ & & -     & -     & -     & 1.31  & 7.99 & 5.86\\
+    DVC'18 \cite{li2018jointly}            & $\checkmark$ & & & $\checkmark$ & & 12.22 & 5.72  & 2.27  & 0.73 & 12.61 & 6.93\\
+    Efficient'20 \cite{suin2020efficient}  & $\checkmark$ & & & $\checkmark$ & & -     & -     & 2.87  & 1.35 & 13.82 & 6.21\\
+    ECHR'20 \cite{wang2020event}           & $\checkmark$ & & & $\checkmark$ & & -     & -     & -     & 1.29 & 14.71 & 7.19\\
+    WS-DEC'21 \cite{chen2021towards}*      & $\checkmark$ & & & $\checkmark$ & & 13.36 & 5.96  & 2.78  & 1.33 & 21.21 & 7.49\\
+    PDVC'21 \cite{wang2021end}             & $\checkmark$ & & & $\checkmark$ & & -     & -     & -     & 1.65 & 25.87 & 7.50 \\
+    \textbf{PPVC}                       & $\checkmark$ & & & $\checkmark$ & & \textbf{14.93} & \textbf{7.40}  & \textbf{3.58}  & \textbf{1.68} & 23.02 & \textbf{7.91} \\
+    \hline
+    MT'18 \cite{zhou2018end} & & $\checkmark$ & $\checkmark$ & $\checkmark$   & & 9.96 & 4.81 & 2.42 & 1.15 & 9.25 & 4.98 \\
+    SDVC'19 \cite{mun2019streamlined} & $\checkmark$ & & & $\checkmark$ & $\checkmark$ & 17.92 & 7.99 & 2.94 & 0.93 & 30.68 & 8.82 \\
+    SGR'21 \cite{deng2021sketch} & $\checkmark$ & & & $\checkmark$ & $\checkmark$ & 14.05 & - & - & 1.67 & 22.12 & 9.07 \\
+    \hline
+  \end{tabular}
+  \label{tab:eval_captioner}
+% \end{table*}
+\end{sidewaystable}
+
+\begin{table}[tp]
+  \centering
+  \caption{
+    Performance comparison of the dense video captioning (YouCook2-TSN).
+  }
+  \begin{tabular}{@{}l|c|c|cccc|ccccc|c@{}}
+    \hline
+    Method &  B@4 & C &  M \\
+    \hline
+    MT'18 \cite{zhou2018end} & 0.30 &  6.10 &  3.18 \\
+    ECHR'18 \cite{wang2018bidirectional} & - & - &  3.82 \\
+    PDVC'21 \cite{wang2021end} &  0.80 &  22.71 &  4.74 \\
+    SGR'21 \cite{deng2021sketch} & - &  - &  4.35 \\
+    \textbf{PPVC} &  \textbf{0.89} &  19.70 &  \textbf{4.94} \\
+    \hline
+  \end{tabular}
+  \label{tab:eval_captioner_yc2}
+\end{table}
+
+We evaluate the performance of our framework on the two large-scale benchmark datasets, ActivityNet Captions \cite{krishna2017dense} and YouCook2 \cite{zhou2018towards}.
+The ActivityNet Captions dataset contains 19,994 Youtube videos, which are divided into three subsets: 10,009, 4,917, and 4,885 videos for training, validation, and testing, respectively.
+% We evaluate the performance of our framework on the ActivityNet Captions dataset \cite{krishna2017dense}, which contains 19,994 Youtube videos.
+% They are divided into three subsets with 10,009, 4,917 and 4,885 videos for training, validation, and testing, respectively.
+On average, the length of videos is 120 seconds, and each video has 3.65 pairs of events and sentences.
+Each sentence has, on average, 13.48 words.
+YouCook2 has 2,000 untrimmed videos of cooking activities with an average length of 320 seconds.
+The videos have 7.7 events and sentences on average.
+We use C3D \cite{tran2015learning} and TSN \cite{wang2018temporal} features for fair comparison for the ActivityNet Captions dataset and the YouCook2 dataset, respectively.
+C3D features are obtained by passing non-overlapping, fixed-length video segments of 8 frames to the C3D network pre-trained on Sports-1M \cite{karpathy2014large}.
+
+\subsection{Metrics}
+\label{subsec:experiments-metrics}
+
+We use publicly available evaluation code\footnote{\url{https://github.com/ranjaykrishna/densevid_eval}} provided by the ActivityNet Captions Challenge.
+We measure recall and precision of event localization and METEOR \cite{banerjee2005meteor}, CIDEr \cite{vedantam2015cider} and BLEU \cite{papineni2002bleu} of sentences.
+Given a generated event and sentence pair, if its event has an overlapping larger than the threshold with any ground-truth events, the captioning score is computed by comparing the corresponding ground-truth sentence.
+Otherwise, the score is set to 0.
+
+
+% METEOR is a widely used metric of the ActivityNet Captions challenge, but it tends to score high for redundant captions that are difficult for humans to read.
+% METEOR inherently has a gap between what human prefer to read and what machines can generate.
+% To circumvent such pitfall, we use SODA(c) \cite{fujita2020soda} as an evaluation metric, which is a story-oriented dense video captioning evaluation framework.
+% SODA(c) is based on METEOR, however it penalizes duplicated captions.
+% Thus, higher scores are given for captions that are equal to the number reference captions.
+% We include SODA(c) because it reflects human readability better than METEOR.
+
+
+\subsection{Implementation Details}
+\label{subsec:experiments-impl_details}
+
+For all modules, the hidden size $d_m$ of multi-head attention is 512, the number of attention heads is 8, and the encoder and decoder have 6 layers.
+The feed-forward network used in the encoder and decoder is 2,048 dimensions.
+The residual and attention dropout ratio is 0.1.
+To prevent over-fitting, we apply dropout to the visual input embedding layer.
+We train the model with adamW \cite{loshchilov2017decoupled} for 30 epochs with a batch size of 1.
+We vary the learning rate as in \cite{vaswani2017attention} and set warmup steps to 10 epochs, which initially increases linearly from 0 to about 0.00005, and then decreases proportionally to the inverse square root.
+The label smoothing factor is set to 0.1.
+
+\subsection{Performance Comparison}
+\label{subsec:experiments-perfom_comp}
+We compare the performance of PPVC with several state-of-the-art methods \cite{krishna2017dense,wang2018bidirectional,li2018jointly,zhou2018end,mun2019streamlined,suin2020efficient,wang2020event,chen2021towards,deng2021sketch,wang2021end}.
+
+
+
+\textbf{Event localization.}
+We first compare the performance of the event localizer among the two subtasks and present the results in Table \ref{tab:eval_event_localizer}.
+We evaluate the localization performance of PPVC with respect to the 4 temporal intersections of unions (@tIoU) thresholds on the Activity Captions validation set.
+PN stands for proposal network.
+
+
+MFT, SDVC, and PDVC explicitly detect events through the event proposal networks.
+In contrast, our method uses the representation organizer to roughly compose representations of the events (i.e., implicit) and then localize each representation.
+Our event localizer achieves superior performance over MFT, SDVC, and PDVC in terms of F1 score.
+Specifically, PPVC surpasses MFT by a large margin, and although its precision is slightly lower than SDVC and PDVC, its recall is slightly superior, resulting in a higher F1 score.
+Based on these results, we can confirm the effectiveness of the representation organizer, the event localizer, and the gating network without any proposal network.
+
+\textbf{Dense video captioning.}
+Tables \ref{tab:eval_captioner} and \ref{tab:eval_captioner_yc2} show the comparisons of captioning performance for state-of-the-art methods using BLEU@N (B@N), CIDEr (C) and METEOR (M) on the ActivityNet validation set and YouCook2 dataset, respectively.
+Asterisk (*) indicates methods evaluated under an incomplete dataset (e.g., 80\%) due to a download issue.
+CE and RL stand for cross-entropy and reinforcement learning, respectively.
+PPVC achieves superior performance compared to the state-of-the-art scheme in terms of the widely used METEOR metric in the ActivityNet Captions challenge.
+
+A few methods \cite{mun2019streamlined,deng2021sketch,wang2020event} adopt reinforcement learning to further improve performance after cross-entropy training.
+They require extra-long training time for RL training and most importantly they tend to generate repetitive phrases \cite{wang2019describing}.
+The RL fine-tuning approach expects high metric values but yields rather poor results in terms of human readability.
+In short, metrics such as CIDEr and METEOR cannot perfectly evaluate human readability.
+In this paper, since we attach great importance to both quantitative and qualitative results, we do not adopt the RL training in the language model.
+
+\begin{table}[t]
+  \centering
+  \caption{
+    A performance comparison of the dense video captioning with ground-truth proposals.
+    % A summary of the performance comparison using BLEU@4 (B@4), CIDEr (C), and METEOR (M) with ground-truth proposals on the ActivityNet validation set.
+  }
+  \begin{tabular}{l|c|c|c}
+    \hline
+    Method & B@4 & C & M \\
+    \hline
+    DCE'17 \cite{krishna2017dense} & 1.60 & 8.88 & 25.12 \\
+    TDA-CG'18 \cite{wang2018bidirectional} & - & 9.69 & - \\
+    DVC'18 \cite{li2018jointly} & 1.62 & 10.33 & 25.24 \\
+    ECHR'20 \cite{wang2020event} & 1.96 & 10.58 & 39.73 \\
+    PDVC'21 \cite{wang2021end} & 2.64 & 10.54 & 47.26 \\
+    \textbf{PPVC} & \textbf{2.76} & 10.48 & \textbf{49.31} \\
+    \hline
+  \end{tabular}
+  \label{tab:eval_captioning_gt}
+\end{table}
+
+Note that, we exclude comparison methods that use anything other than C3D/TSN features (i.e., multi-modal) or train the captioning module with reinforcement learning after cross-entropy training.
+RL adopts a natural language evaluation metric such as METEOR directly as a reward, which is very effective for high scores. 
+However, it tends to generate repetitive phrases with long sentences \cite{wang2019describing}, which reduces readability \cite{wang2018bidirectional,fujita2020soda}.
+In this work, we do not use the RL training in the language model since we place a high value on both quantitative and qualitative results.
+
+We evaluate the PPVC with ground-truth proposals, examining only the captioning performance separately from event localization on the ActivityNet validation set, as shown in Table \ref{tab:eval_captioning_gt}.
+Compared to other algorithms, PPVC is slightly inferior in CIDEr but superior in BLEU@4 and METEOR metrics, indicating that the events generated by PPVC are more accurate.
+We also compare the performance of PPVC with the state-of-the-art methods on the YouCook2 dataset, as shown in Table \ref{tab:eval_captioner_yc2}.
+Similarly, PPVC outperforms other algorithms in terms of METEOR and BLEU@4.
+Based on these results, we can see that PPVC is effective with parallel pathways instead of sequential paradigms.
+Compared to PDVC, which is a similar parallel decoding approach, PPVC achieves slightly better results in terms of BLEU and METEOR, indicating the effectiveness of representation organizers over event counter head.
+
+We analyze PPVC in depth based on the evaluation mechanisms and values of the metrics.
+CIDEr (Consensus-based Image Description Evaluation) is a TF-IDF (Term Frequency-Inverse Document Frequency)-based natural language evaluation metric.
+By taking into account both the frequency of the words and the length of the document, TF-IDF determines the importance of each word.
+CIDEr evaluates a candidate sentence by vectorizing the TF-IDF values of words in the candidate sentence and reference sentences and comparing their similarity.
+Intuitively, it tends to ignore grammar and word order and concentrate more on event-specific words than common words in reference sentences.
+METEOR (Metric for Evaluation of Translation with Explicit ORdering), on the other hand, evaluates a candidate sentence using a penalty function for inconsistencies and weighted F-score (i.e., both recall and precision).
+It takes into account the portion of the generated sentence where the n-grams match those of the reference sentences.
+We contend, based on these facts, that PPVC has advantages in terms of sentence completeness using common words and drawbacks in generating event-specific words.
+The limitations of PPVC and future work are discussed in detail in Section \ref{sec:conclusion}.
+
+
+\begin{table}[t]
+  \centering
+  \caption{
+    Average number of events per video.
+    % Average number of events per video generated by the event localizer on ActivityNet Caption validation set.
+    % PN, NMS and EC are proposal network, non-maximum suppression and event counter, respectively.
+  }
+  \begin{tabular}{l|c|c}
+    \hline
+    Method & Approach & Num. events \\
+    \hline
+    SDVC'19 \cite{mun2019streamlined} & PN+NMS & 2.85 \\
+    PDVC'21 \cite{wang2021end} & EC & 3.03\\
+    \textbf{PPVC} & - & 5.54 \\
+    % Avg. number of GT events & & 3.65 \\
+    \hline
+  \end{tabular}
+  \label{tab:eval_num_events}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+%   \includegraphics[width=0.9\linewidth]{figures/distribution_num_events}
+   \includegraphics[width=0.9\linewidth]{figures/ppvc_fig3}
+   \caption{
+    Distribution of the number of events per video.
+    % Distribution of the number of events generated by PDVC and PPVC.
+    % PPVC generates more events and sentences on average, indicating a richer description of the video.
+   }
+   \label{fig:eval_dist_events}
+\end{figure}
+
+\textbf{Representation organization.}
+For a more in-depth analysis of representation organizers, we examine the events generated from all videos included in the ActivityNet Captions validation set.
+Table \ref{tab:eval_num_events} and Figure \ref{fig:eval_dist_events} show the number of events generated from each method, and the distribution of the number of events generated for all videos, respectively.
+In Table {\ref{tab:eval_num_events}}, PN, NMS, and EC are proposal network, non-maximum suppression, and event counter, respectively.
+
+In PPVC, the number of events is widely distributed from 3 to 9, whereas PDVC generates only 3 to 5 events per video.
+In terms of the average number, PPVC, PDVC, and SDVC generate 5.54, 3.03, and 2.85 events, respectively, indicating that PPVC generates more sentences and a more detailed description of the video.
+
+Furthermore, based on the above results, the event counter of PDVC outputs 3 (80.4 \%), which is the average of the number of events of the videos in the entire dataset.
+On the other hand, PPVC without an event counter generates proposals with a more diverse number of events.
+
+
+
+
+
+\begin{figure}[t]
+  \centering
+%   \includegraphics[width=0.9\linewidth]{figures/eval_ablation}
+   \includegraphics[width=0.9\linewidth]{figures/ppvc_fig4}
+   \caption{
+    The ablation result of each module for captioning.
+    % Ablation results on ActivityNet Captions validation set.
+    % Vanilla PPVC means a simple parallel pathway model without both the representation organizer and the gating network used in the full model.
+    % ``RO" and ``GN" stand for the representation organizer and the gating network, respectively.
+    }
+   \label{fig:eval_ablation}
+   \end{figure}
+
+\begin{table}[t]
+   \centering
+   \caption{
+      The ablation result of each module for localization.
+    %   Ablation results of average recall and precision on the ActivityNet Captions validation set.
+    %   Vanilla PPVC means a simple parallel pathway model without the representation organizer and the gating network used in the full model.
+    % ``RO" and ``GN" stand for the representation organizer and the gating network, respectively.
+   }
+   \begin{tabular}{l|c|c}
+      \hline
+      Method & Recall & Precision \\
+      \hline
+      Vanilla    & 44.53 & 32.92 \\
+      W/o RO    & 77.90 & 34.57 \\
+      W/o GN    & 74.37 & 39.93 \\
+      Full       & 61.98 & 58.33 \\
+      \hline
+  \end{tabular}
+  \label{tab:eval_ablation_event_localization}
+ \end{table}
+ 
+
+
+\subsection{Ablation Study}
+\label{subsec:experiments-ablation_study}
+\textbf{Ablation study on each module.}
+We conduct several ablation studies to precisely quantify the contribution of the core modules of PPVC.
+We compare the performance of 4 different models with different combinations of modules as follows: (i) vanilla PPVC: has a parallel pathway but no representation organizer and gating network, (ii) PPVC without representation organizer: directly localizes and describes the events from the encoded video, (iii) PPVC without gating network: does not control the flow to the event localizer and the sentence generator, (iv) PPVC (full model).
+
+Figure {\ref{fig:eval_ablation}} and Table {\ref{tab:eval_ablation_event_localization}} show the average recall and precision (i.e., localization) of an ablation study on the ActivityNet validation set and we have the following observations.
+``RO" and ``GN" stand for the representation organizer and the gating network, respectively.
+First, vanilla PPVC eliminates the dependency between the two modules with a parallel architecture, however, suffers from localizing and describing events directly from the vast amounts of video features.
+We argue that the simple parallel pathway dense video captioning model may not be as effective as the conventional sequential method.
+Second, applying the representation organizer to vanilla PPVC, it can be seen that there is a significant performance gain.
+This result proves that the representation organizer acts as a filter to extract only the necessary (core) information and guides the event localizer and sentence generator.
+Third, the gating network is essential in PPVC because it controls the flow from the representation organizer to the parallel pathway and filters the unnecessary representations.
+%
+
+\begin{figure}[t]
+  \centering
+%   \includegraphics[width=0.9\linewidth]{figures/eval_ablation_num_query.eps}
+   \includegraphics[width=0.9\linewidth]{figures/ppvc_fig5}
+   \caption{
+    The ablation result of the number of queries.
+    % Ablation results on ActivityNet Captions validation set.
+    % We measure the F1 score by varying $K$, the number of fixed queries in PPVC.
+   }
+   \label{fig:eval_ablation_num_query}
+\end{figure}
+
+
+
+\textbf{Ablation study on the number of queries.}
+We train several times to determine the number of fixed queries, $K$, and measure F1 for the generated events by varying $K$.
+Based on the fact that the ActivityNet Captions dataset contains videos of up to 27 events, we examine the results for $K$ of 3, 5, 7, 10, 15, 20, 25, and 30.
+It can be seen that the best performance is when the number of queries is 10, as shown in Figure \ref{fig:eval_ablation_num_query}.
+The overall performance tends to improve as the number of queries rises, but when it exceeds 10, it starts to somewhat decline.
+PPVC has the following trade-offs, depending on the number of queries: Low query numbers cause PPVC to have a low recall in event localization; on the other hand, high query numbers cause a high recall but poor precision.
+Consequently, we set $K$ to 10 for the number of queries, which is the best F1 score (i.e., the harmonic mean of the recall and precision).
+
+In short, by eliminating bottlenecks caused by the representation organizer and the gating network, PPVC achieves performance improvements over PDVC, an existing parallel decoding method.
+Figure \ref{fig:eval_ablation} demonstrates the efficiency of the representation organizer and the gating network, while Figure \ref{fig:eval_ablation_num_query} demonstrates the need for a larger number of queries.
+
+%
+
+\begin{figure*}[!tp]
+  \centering
+  % \fbox{\rule{0pt}{5in} \rule{1\linewidth}{0pt}}
+%  \includegraphics[width=1\linewidth]{figures/eval_qualitative}
+  \includegraphics[width=1\linewidth]{figures/ppvc_fig6}
+  \caption{
+    Examples of qualitative results on ActivityNet Captions validation set.
+    Sentences corresponding to the event are matched with the same color.
+  }
+  \label{fig:eval_qualitative_results}
+\end{figure*}
+
+\subsection{Qualitative Results}
+\label{subsec:experiments-qual_res}
+
+Figure \ref{fig:eval_qualitative_results} illustrates the qualitative results of localizing and describing events in the video.
+First, it can be seen that PPVC localizes and describes videos with a large number of events (i.e., more than 4) in both examples.
+To detect more events, PPVC has two mechanisms: the representation organizer (Section \ref{subsec:method_representation_organization}) and the gating network (Section \ref{subsec:method-gating_network}).
+The representation organizer implicitly generates all possible events based on the number of queries.
+Then, the gating network eliminates unnecessary events to determine the final events of PPVC.
+
+Second, We can see that PPVC generates fluent and rich sentences using the keywords such as ``kayak'', ``waves'', ``bumpy'', ``dog'', ``man'', ``frisbee'' and ``catch'' in both examples.
+Unfortunately, there are some ill-defined sentences in the black and pink sentences in the second video.
+PPVC generates the same sentence for two different events.
+However, generating repeated sequences is one of the common challenges of language models.
+We leave reducing this by contributing to sentence generation as our future work.
