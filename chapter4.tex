@@ -3,78 +3,92 @@
 \chapter{Parallel Pathway: Simultaneous Localization and Caption Generation}
 \label{chap:parallel_pathway}
 
-\section{Limitations of Sequential Methods and Need for Parallel Approach}
 
-With the advent of large-scale video activity datasets \cite{karpathy2014large,caba2015activitynet,kay2017kinetics}, video understanding has become one of the hot topics in computer vision. 
-Based on this interest, research on video understanding has successfully addressed various tasks, starting with activity classification and detection, and more complex video captioning \cite{venugopalan2015sequence,venugopalan2015translating,yao2015describing,pan2016hierarchical,pan2016jointly,baraldi2017hierarchical,gan2017semantic,pan2017video,yu2017end,wang2018reconstruction,liu2018fine,xiao2019video,zhu2020understanding,bhooshan2022multimodal,li2022adaptive}.
-Videos naturally contain multiple events, such as one or more objects and motions appearing simultaneously at various lengths, however, the above-mentioned approaches provide limited information, e.g., only a sentence for a short trimmed video.
-This lack of detail is not sufficient to describe the overall storyline of the video.
+\section{Breaking the Sequential Paradigm}
+
+The fundamental challenge in dense video captioning lies in effectively coordinating two interconnected yet distinct subtasks: temporal event localization and natural language generation.
+Traditional approaches have predominantly adopted sequential processing paradigms, where these subtasks are performed consecutively rather than collaboratively~\cite{krishna2017dense,li2018jointly,wang2018bidirectional,mun2019streamlined}.
+While this decomposition simplifies the problem conceptually, it introduces critical limitations that fundamentally constrain the quality and coherence of generated video descriptions.
 
 \begin{figure}[t]
   \centering
-%   \includegraphics[width=\linewidth]{figures/approach_overview}
-   \includegraphics[width=\linewidth]{figures/ppvc_fig1}
-   \caption{A summary of comparisons between existing methods and our approach to dense video captioning.}
-   \label{fig:intro_approaches}
+  \includegraphics[width=\linewidth]{figures/ppvc_fig1}
+  \caption{A summary of comparisons between existing methods and our approach to dense video captioning.}
+  \label{fig:intro_approaches}
 \end{figure}
 
-Recently, many methods for dense video captioning have been proposed for more detailed and rich video descriptions \cite{krishna2017dense,li2018jointly,wang2018bidirectional,zhou2018end,mun2019streamlined,deng2021sketch,wang2021end}.
-They can be classified into three classes from an architectural point of view: bottom-up, top-down, and parallelism.
-The bottom-up method detects the temporal regions (i.e., events) that are the core of the video story, and then generates a sentence describing each event.
-A top-down approach is to describe the entire video in a paragraph and localize each sentence to the timeline of the video.
-The parallel approach simultaneously decodes sentences and events from encoded video features.
+\subsection{Limitations of Sequential Processing}
 
-A lot of work on various approaches has resulted in significant performance improvements, but there is still room for improvement.
-Methods with a bottom-up or top-down sequential architecture suffer from the fact that the performance of subsequent modules is highly dependent on the preceding ones.
-No matter how sophisticated the captioning module is, it is exceedingly difficult to construct polite phrases for poorly defined events using the bottom-up strategy.
-For this reason, many sequential pipeline solutions (\cite{krishna2017dense,li2018jointly,wang2018bidirectional,mun2019streamlined,deng2021sketch}) cannot be trained end-to-end and require relatively complex training techniques.
-In addition, the majority of sequential approaches (\cite{krishna2017dense,li2018jointly,wang2018bidirectional,zhou2018end,mun2019streamlined,wang2020event}) generate many event proposals with the event proposal network and eliminate duplicate event proposals with handcrafted algorithms such as MNS.
-These algorithms require additional hyper-parameters (e.g., threshold) that greatly affect the outcome.
+Sequential dense video captioning frameworks can be categorized into two primary paradigms: bottom-up and top-down approaches.
+Bottom-up methods~\cite{krishna2017dense,li2018jointly,wang2018bidirectional,zhou2018end,mun2019streamlined} first detect temporal event proposals and subsequently generate corresponding captions, following a ``localize-then-describe'' pipeline.
+Conversely, top-down approaches~\cite{deng2021sketch} generate paragraph-level descriptions and then ground individual sentences to specific temporal segments through a ``describe-then-localize'' strategy.
 
-To address this problem, parallel decoding approaches have been proposed recently \cite{wang2021end}.
-They improve performance by removing sequential dependencies; however, they introduce the risk of information bottlenecks at the branch point. 
-The bottleneck limits performance by preventing the flow of information that requires localization and captioning.
-In other words, they still have an ``encode-then-decode'' procedure, so the bottleneck in the branch leads to poor results.
-For instance, the most recently proposed method \cite{wang2021end}, a parallel decoding approach with an event counter, is restricted to creating a large number of events and detailed descriptions for long video.
+Both paradigms suffer from inherent architectural limitations that constrain their effectiveness.
+The most critical issue is \textit{error propagation}: inaccuracies in the initial stage cascade to subsequent modules, creating a compounding effect that degrades overall performance.
+In bottom-up approaches, poorly localized events inevitably lead to contextually inappropriate captions, regardless of the sophistication of the language generation module.
+Similarly, top-down methods struggle when initial paragraph-level descriptions fail to capture essential temporal structures~\cite{wang2021end}.
 
+Furthermore, sequential approaches typically require \textit{hand-crafted post-processing algorithms} such as Non-Maximum Suppression (NMS) for proposal selection \cite{hosang2017learning}.
+These algorithms operate independently of video content, relying solely on temporal overlap criteria and predefined thresholds.
+This content-agnostic processing often eliminates semantically meaningful events, particularly in scenarios involving multiple concurrent activities or nested temporal structures.
 
-With careful analysis of the aforementioned challenges, we obtain the following inferences for high-quality dense video captioning. 
-A parallel architecture could be employed to reduce the dependency between the captioning and localization modules while eliminating the branch's bottleneck. 
-Even though the parallel architecture helps get rid of dependencies between modules, branch points still need to be carefully designed to avoid bottlenecks.
+The sequential dependency also prevents \textit{end-to-end optimization}, necessitating complex multi-stage training procedures that hinder convergence and limit the model's ability to learn optimal joint representations for both localization and captioning tasks~\cite{zhou2018end,wang2021end}.
 
-This work proposes PPVC, a parallel pathway dense video captioning that breaks sequential processing and mitigates the negative impacts of preceding modules on succeeding modules.
-Unlike the bottom-up or top-down pipeline adopted by most existing methods, our proposed framework performs captioning and localization at the same time as depicted in Figure \ref{fig:intro_approaches}.
-Moreover, to mitigate the bottleneck of information, a challenge of the existing parallel decoding approach, we pass all potential information at branch points, filter out unnecessary things just before decoding, and introduce a multi-stack cross-attention mechanism to exploit multiple information for localization and capturing.
+\subsection{Emergence of Parallel Processing}
+Recognizing these fundamental limitations, recent research has explored parallel processing paradigms that perform event localization and caption generation simultaneously~\cite{wang2021end}.
+Parallel approaches aim to eliminate sequential dependencies by employing shared encoder representations and parallel decoder heads for the two subtasks.
 
+Wang et al.~\cite{wang2021end} introduced PDVC (Parallel Dense Video Captioning), which demonstrated that parallel decoding could significantly improve performance compared to sequential methods.
+However, this pioneering work revealed new challenges specific to parallel architectures: \textit{information bottlenecks at branching points} and \textit{query limitation problems}.
 
-% %%%%%%%%%%%%%%%%%%%%%
+The information bottleneck occurs because parallel approaches still maintain an ``encode-then-decode'' structure, where encoded video features must simultaneously serve both localization and captioning decoders.
+This shared representation may not optimally capture the distinct information requirements of each subtask.
+Additionally, the limited number of queries in transformer-based decoders restricts the maximum number of detectable events, particularly problematic for long videos containing multiple overlapping activities.
 
-We evaluate the performance of PPVC on the ActivityNet Captions datasets \cite{krishna2017dense}.
-PPVC achieves superior performance objectively and subjectively compared with state-of-the-art solutions.
-Specifically, PPVC not only overcomes the inherent problems of the sequential paradigm but also outperforms existing bottom-up and top-down methods.
-%Specifically, PPVC not only surpasses methods of the existing sequential paradigm but also excels in state-of-the-art parallel approach methods in most metrics.
-Compared with the state-of-the-art parallel approaches, PPVC is the best in most metrics.
-Regarding the quality of the outcomes, PPVC provides a detailed and fluent explanation with an adequate number of events.
-The main contributions of this paper are summarized as follows.
-\begin{itemize}
-  \item We propose a parallel pathway dense video framework, PPVC by alleviating the bottleneck at the branch point.
-  \item PPVC provides richer/fluent descriptions compared to the state-of-the-art parallel approaches and outperforms the other methods in most metrics.
-  % \item We propose a parallel pathway dense video framework, PPVC by redesigning the core modules, localization and captioning to alleviate the sequential dependence.
-  % PPVC further improves upon most existing approaches, the two-step sequential approach.
-  % \item We further improve the existing parallel dense video captioning framework by alleviating the bottleneck at the branch point using the representation organizer and a newly proposed multi-stack cross attention module.
-  % \item PPVC provides richer/fluent descriptions compared to the state-of-the-art parallel approaches and outperforms the other methods in most metrics.
-  % \item We carefully evaluate the number of events generated by PPVC in addition to the widely used METEOR metric, and find that it generates more event and sentence sets.
-\end{itemize}
+\subsection{Motivation for Enhanced Parallel Architecture}
+Our analysis reveals that while parallel processing addresses the error propagation problem inherent in sequential approaches, current implementations fail to fully realize the potential of this paradigm.
+The key insight driving our approach is that effective parallel processing requires not merely simultaneous decoding, but architectural innovations that eliminate information bottlenecks while preserving the rich contextual information necessary for both accurate localization and coherent caption generation.
 
-The rest of this paper is organized as follows.
-In Section \ref{sec:related_work}, we discuss the related work on the dense video captioning task and differentiate our work from the state-of-the-art.
-We propose PPVC, a parallel pathway dense video captioning method in Section \ref{sec:method}.
-Section \ref{sec:experiments} evaluates the performance of PPVC in detail.
-We conclude the paper in Section \ref{sec:conclusion}.
+To achieve this goal, we identify three critical design principles:
+\begin{enumerate}
+  \item Bottleneck-free Information Flow: Instead of forcing all information through a single bottleneck point, we propose passing comprehensive potential information at branching points and filtering unnecessary elements just before decoding. This approach ensures that both localization and captioning modules have access to the full spectrum of relevant visual and temporal information.
+  \item Multi-scale Feature Integration: Recognizing that event localization and caption generation may benefit from different levels of feature abstraction, we introduce multi-stack cross-attention mechanisms that enable simultaneous access to both high-level semantic representations and low-level visual details~\cite{vaswani2017attention}.
+  \item Dynamic Event Enumeration: Rather than predetermining the number of events through separate counter modules, we propose allowing the model to dynamically determine the optimal number of events based on video content, eliminating artificial constraints on event detection capability.
+\end{enumerate}
 
-\section{Parallel Pathway Dense Video Captioning (PPVC)}
+As illustrated in Figure \ref{fig:intro_approaches}, our proposed Parallel Pathway Dense Video Captioning (PPVC) framework fundamentally reimagines the dense video captioning architecture by eliminating sequential dependencies while addressing the bottleneck limitations of existing parallel approaches.
+Through these innovations, PPVC achieves superior performance in both temporal localization accuracy and caption quality compared to state-of-the-art sequential and parallel methods.
 
+The remainder of this chapter details the architectural design and implementation of PPVC, demonstrating how these motivational insights translate into concrete algorithmic improvements that advance the state-of-the-art in dense video captioning.
+
+\section{Parallel Pathway Architecture (PPVC)}
 This section describes the core ideas and the network architecture of PPVC in detail.
+
+\subsection{Overview}
+For a given video, dense video captioning is the task of detecting multiple overlapping events and generating sentences accordingly.
+Existing methods generally divide the whole process into two sub-problems, event detection, and sentence generation, and solve them one by one in order.
+The performance of the two modules is tightly coupled, and this sequential processing method causes a major flaw: the result of the preceding module greatly affects the performance of the subsequent module.
+However, parallel architectures have the challenge that the bottleneck of information at branch points can limit the outcomes.
+Therefore, it is critical to decouple the dependency between the two modules by breaking the sequential processing paradigm while not occurring a bottleneck.
+
+With this consideration, we construct two sub-problems of dense video captioning in parallel.
+We first organize the encoded video features into highly relevant ones to understand the core context of the video, rather than directly generating events and sentences from the video.
+PPVC consists of five modules: video encoder $\mathcal{E}$, representation organizer $\mathcal{O}$, event localizer $\mathcal{L}$, sentence generator $\mathcal{S}$, gating network $\mathcal{G}$ as depicted in Figure \ref{fig:architecture}. 
+
+Given a video $\mathcal{V}$, it is converted to a hidden state vector $\mathbi{H}_v$ by the video encoder $\mathcal{E}$.
+$\mathbi{H}_v$ is fed into the representation organizer $\mathcal{O}$ to organize the encoded video features that determine the context of the video storyline, which is the branch point of the parallel pathway without any bottleneck.
+The event localizer $\mathcal{L}$ and sentence generator $\mathcal{S}$ then localize the events $\{e_i\}_{i=1}^{n}$ and generate sentences $\{s_i\}_{i=1}^{n}$, respectively, while further mitigating bottlenecks using multi-stack cross attention.
+The gating network $\mathcal{G}$ controls the flow at branch points and refines information by blocking the flow of unnecessary event queries.
+The procedure of PPVC is described in Algorithm~\ref{algo:ppvc}.
+
+\begin{figure}[t]
+  \centering
+   \includegraphics[width=\linewidth]{figures/ppvc_fig2}
+   \caption{
+    Architecture of the proposed method, PPVC.
+   }
+  \label{fig:architecture}
+\end{figure}
 
 \begin{algorithm}[t]
   \caption{Parallel Pathway Dense Video Captioning}
@@ -93,31 +107,13 @@ This section describes the core ideas and the network architecture of PPVC in de
   \end{algorithmic}
 \end{algorithm}
 
-\subsection{Overview}
-For a given video, dense video captioning is the task of detecting multiple overlapping events and generating sentences accordingly.
-Existing methods generally divide the whole process into two sub-problems, event detection, and sentence generation, and solve them one by one in order.
-The performance of the two modules is tightly coupled, and this sequential processing method causes a major flaw: the result of the preceding module greatly affects the performance of the subsequent module.
-However, parallel architectures have the challenge that the bottleneck of information at branch points can limit the outcomes.
-Therefore, it is critical to decouple the dependency between the two modules by breaking the sequential processing paradigm while not occurring a bottleneck.
-
-With this consideration, we construct two sub-problems of dense video captioning in parallel.
-We first organize the encoded video features into highly relevant ones to understand the core context of the video, rather than directly generating events and sentences from the video.
-PPVC consists of five modules: video encoder $\mathcal{E}$, representation organizer $\mathcal{O}$, event localizer $\mathcal{L}$, sentence generator $\mathcal{S}$, gating network $\mathcal{G}$ as depicted in Figure \ref{fig:architecture}. 
-
-Given a video $\mathcal{V}$, it is converted to a hidden state vector $\mathbi{H}_v$ by the video encoder $\mathcal{E}$.
-$\mathbi{H}_v$ is fed into the representation organizer $\mathcal{O}$ to organize the encoded video features that determine the context of the video storyline, which is the branch point of the parallel pathway without any bottleneck.
-The event localizer $\mathcal{L}$ and sentence generator $\mathcal{S}$ then localize the events $\{e_i\}_{i=1}^{n}$ and generate sentences $\{s_i\}_{i=1}^{n}$, respectively, while further mitigating bottlenecks using multi-stack cross attention.
-The gating network $\mathcal{G}$ controls the flow at branch points and refines information by blocking the flow of unnecessary event queries.
-The procedure of PPVC is described in Algorithm \ref{algo:ppvc}.
-
 \subsection{Video Encoder}
-
 The goal of the video encoder $\mathcal{E}$ is to extract the hidden state $\mathbi{H}_v$ by encoding the spatiotemporal context of the video $\mathcal{V}$.
 Our video encoder consists of a convolution network and a sequential data encoder.
-In particular, we adopt the C3D \cite{tran2015learning} network and the transformer encoder \cite{vaswani2017attention} with multi-head attention (MA) to understand the long-term temporal context of a video.
+In particular, we adopt the C3D~\cite{tran2015learning} network and the transformer encoder~\cite{vaswani2017attention} with multi-head attention (MA) to understand the long-term temporal context of a video.
 First, the video encoder divides a given video $\mathcal{V}$ into non-overlapping segments of fixed length (e.g., 8 frames).
 The C3D network takes a segment as input and extracts features $\mathbi{F}_v \in \mathbb{R}^{T \times d_f}$, where $T$ is the number of segments and $d_f$ is the dimension of features.
-We apply a linear transformation to feed the video feature $\mathbi{F}_v$ of dimension $d_f$ to the transformer encoder \cite{vaswani2017attention} of dimension $d_m$ as follows:
+We apply a linear transformation to feed the video feature $\mathbi{F}_v$ of dimension $d_f$ to the transformer encoder~\cite{vaswani2017attention} of dimension $d_m$ as follows:
 \begin{equation}
   \mathbi{H}_v^0 = \text{PE} (\text{Linear} \left( \mathbi{F}_v \right) )
   \label{eq:linear_transformation}
