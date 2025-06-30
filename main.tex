@@ -128,6 +128,17 @@
 \textbf{\fontsize{13pt}{13} \selectfont  Towards Realistic Dense Video Captioning: Gradual, Parallel, and Adversarial Pathways}
 \end{center}
 \addcontentsline{toc}{chapter}{Abstract}
+Dense video captioning, which aims to temporally localize multiple events within untrimmed videos and generate corresponding natural language descriptions, faces fundamental challenges including sequential processing limitations, overlapping event detection difficulties, annotation scarcity, and the inherent nondeterminism in human interpretation. This dissertation presents four complementary approaches that systematically address these challenges while advancing the state-of-the-art in dense video captioning.
+
+First, we propose the Step-by-Step (SBS) framework, a human-inspired progressive approach that explicitly predicts the number of events and progressively detects overlapping event boundaries. Unlike conventional proposal-based methods, SBS employs content-aware event counting and actionness-weighted temporal IoU algorithms, achieving superior F1 scores (58.56) while generating significantly more events per video compared to existing methods.
+
+Second, we introduce the Parallel Pathway Dense Video Captioning (PPVC) framework that performs event localization and caption generation simultaneously, eliminating error propagation inherent in sequential "localize-then-describe" pipelines. Through bottleneck-free information flow and multi-stack cross-attention mechanisms, PPVC achieves competitive performance with METEOR scores of 7.91 on ActivityNet Captions.
+
+Third, we develop the Pretraining-based Weakly Supervised Dense Video Captioning (PWS-DVC) framework that leverages large-scale clip-level caption datasets for model initialization without requiring explicit event-level annotations. PWS-DVC demonstrates state-of-the-art performance among weakly supervised methods, achieving METEOR scores of 8.22 on ActivityNet Captions while significantly reducing annotation requirements.
+
+Finally, we present the Adversarial Dense Video Captioning (ADVC) framework that explicitly models the nondeterministic nature of video interpretation through adversarial learning. By capturing the distribution of valid interpretations rather than assuming deterministic ground truth, ADVC generates diverse yet coherent outputs, achieving METEOR scores of 8.28 on ActivityNet Captions and 7.34 on YouCook2.
+
+Comprehensive experimental validation on standard benchmarks including ActivityNet Captions and YouCook2 demonstrates that our approaches not only achieve superior quantitative performance but also address fundamental limitations in existing methods. This work establishes new paradigms for dense video captioning that better reflect the complexity and subjectivity inherent in real-world video understanding tasks.
 \end{abstract}
 
 \begin{flushleft}
