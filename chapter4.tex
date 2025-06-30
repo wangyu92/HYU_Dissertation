@@ -81,14 +81,36 @@ The event localizer $\mathcal{L}$ and sentence generator $\mathcal{S}$ then loca
 The gating network $\mathcal{G}$ controls the flow at branch points and refines information by blocking the flow of unnecessary event queries.
 The procedure of PPVC is described in Algorithm~\ref{algo:ppvc}.
 
-\begin{figure}[t]
+\begin{sidewaysfigure}
   \centering
    \includegraphics[width=\linewidth]{figures/ppvc_fig2}
    \caption{
     Architecture of the proposed method, PPVC.
    }
   \label{fig:architecture}
-\end{figure}
+\end{sidewaysfigure}
+
+% \begin{figure}[t]
+%   \centering
+%    \includegraphics[width=\linewidth]{figures/ppvc_fig2}
+%    \caption{
+%     Architecture of the proposed method, PPVC.
+%    }
+%   \label{fig:architecture}
+% \end{figure}
+
+\subsection{Video Encoder}
+The goal of the video encoder $\mathcal{E}$ is to extract the hidden state $\mathbi{H}_v$ by encoding the spatiotemporal context of the video $\mathcal{V}$.
+Our video encoder consists of a convolution network and a sequential data encoder.
+In particular, we adopt the C3D~\cite{tran2015learning} network and the transformer encoder~\cite{vaswani2017attention} with multi-head attention (MA) to understand the long-term temporal context of a video.
+First, the video encoder divides a given video $\mathcal{V}$ into non-overlapping segments of fixed length (e.g., 8 frames).
+The C3D network takes a segment as input and extracts features $\mathbi{F}_v \in \mathbb{R}^{T \times d_f}$, where $T$ is the number of segments and $d_f$ is the dimension of features.
+We apply a linear transformation to feed the video feature $\mathbi{F}_v$ of dimension $d_f$ to the transformer encoder~\cite{vaswani2017attention} of dimension $d_m$ as follows:
+\begin{equation}
+  \mathbi{H}_v^0 = \text{PE} (\text{Linear} \left( \mathbi{F}_v \right) )
+  \label{eq:linear_transformation}
+\end{equation}
+Then, after applying the positional encoding (i.e., $\text{PE}(\cdot)$) to $\text{Linear}(\bm{F}_v)$, we start with the input $\mathbi{H}_v^0$.
 
 \begin{algorithm}[t]
   \caption{Parallel Pathway Dense Video Captioning}
@@ -106,19 +128,6 @@ The procedure of PPVC is described in Algorithm~\ref{algo:ppvc}.
     \RETURN $\{E_{k}\}_{k=1}^{K},\;\{s_{k}\}_{k=1}^{K}$
   \end{algorithmic}
 \end{algorithm}
-
-\subsection{Video Encoder}
-The goal of the video encoder $\mathcal{E}$ is to extract the hidden state $\mathbi{H}_v$ by encoding the spatiotemporal context of the video $\mathcal{V}$.
-Our video encoder consists of a convolution network and a sequential data encoder.
-In particular, we adopt the C3D~\cite{tran2015learning} network and the transformer encoder~\cite{vaswani2017attention} with multi-head attention (MA) to understand the long-term temporal context of a video.
-First, the video encoder divides a given video $\mathcal{V}$ into non-overlapping segments of fixed length (e.g., 8 frames).
-The C3D network takes a segment as input and extracts features $\mathbi{F}_v \in \mathbb{R}^{T \times d_f}$, where $T$ is the number of segments and $d_f$ is the dimension of features.
-We apply a linear transformation to feed the video feature $\mathbi{F}_v$ of dimension $d_f$ to the transformer encoder~\cite{vaswani2017attention} of dimension $d_m$ as follows:
-\begin{equation}
-  \mathbi{H}_v^0 = \text{PE} (\text{Linear} \left( \mathbi{F}_v \right) )
-  \label{eq:linear_transformation}
-\end{equation}
-Then, after applying the positional encoding (i.e., $\text{PE}(\cdot)$) to $\text{Linear}(\bm{F}_v)$, we start with the input $\mathbi{H}_v^0$.
 
 The transformer encoder, which contains multiple $N$ layers, is the core of our video encoder.
 Each layer is made up of self-attention and feed-forward modules, and at the end of each module, there is a residual connection and layer normalization.
@@ -556,19 +565,29 @@ Consequently, we set $K$ to 10 for the number of queries, which is the best F1 s
 In short, by eliminating bottlenecks caused by the representation organizer and the gating network, PPVC achieves performance improvements over PDVC, an existing parallel decoding method.
 Figure \ref{fig:eval_ablation} demonstrates the efficiency of the representation organizer and the gating network, while Figure \ref{fig:eval_ablation_num_query} demonstrates the need for a larger number of queries.
 
-%
-
-\begin{figure*}[!tp]
-  \centering
+\begin{sidewaysfigure}
+\centering
   % \fbox{\rule{0pt}{5in} \rule{1\linewidth}{0pt}}
 %  \includegraphics[width=1\linewidth]{figures/eval_qualitative}
-  \includegraphics[width=1\linewidth]{figures/ppvc_fig6}
+  \includegraphics[width=0.8\columnwidth]{figures/ppvc_fig6}
   \caption{
     Examples of qualitative results on ActivityNet Captions validation set.
     Sentences corresponding to the event are matched with the same color.
   }
   \label{fig:eval_qualitative_results}
-\end{figure*}
+\end{sidewaysfigure}
+
+% \begin{figure*}[!tp]
+%   \centering
+%   % \fbox{\rule{0pt}{5in} \rule{1\linewidth}{0pt}}
+% %  \includegraphics[width=1\linewidth]{figures/eval_qualitative}
+%   \includegraphics[width=1\linewidth]{figures/ppvc_fig6}
+%   \caption{
+%     Examples of qualitative results on ActivityNet Captions validation set.
+%     Sentences corresponding to the event are matched with the same color.
+%   }
+%   \label{fig:eval_qualitative_results}
+% \end{figure*}
 
 \subsection{Qualitative Results}
 \label{subsec:experiments-qual_res}

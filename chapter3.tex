@@ -6,9 +6,9 @@
 \section{Human-inspired Video Understanding}
 \label{sec:human_inspired}
 
-\begin{figure*}[t]
+\begin{sidewaysfigure}
   \centering
-  \includegraphics[width=1\textwidth]{figures/sbs_intro_overview.pdf}
+  \includegraphics[width=1\columnwidth]{figures/sbs_intro_overview.pdf}
   \caption{
     Comparison between the existing methods and ours for dense video captioning.
     Similar to human interpretation, the proposed algorithm first scans a given video and explicitly determines the number of events.
@@ -18,7 +18,21 @@
     This makes it difficult to detect different events (i.e., actions) in the same time period.
   }
   \label{fig:intro_overview}
-\end{figure*}
+\end{sidewaysfigure}
+
+% \begin{figure}[t]
+%   \centering
+%   \includegraphics[width=1\textwidth]{figures/sbs_intro_overview.pdf}
+%   \caption{
+%     Comparison between the existing methods and ours for dense video captioning.
+%     Similar to human interpretation, the proposed algorithm first scans a given video and explicitly determines the number of events.
+%     It then generates events by specifying the start and end timestamps of the salient region based on the number of events.
+%     Finally, it describes a specific sentence for each event region.
+%     On the other hand, existing methods generate a large number of event proposals and then remove duplicates with a han-crafted algorithm such as NMS.\@
+%     This makes it difficult to detect different events (i.e., actions) in the same time period.
+%   }
+%   \label{fig:intro_overview}
+% \end{figure}
 
 Human video understanding exhibits remarkable capabilities that current computational models struggle to replicate~\cite{Heilbron2015-ha,Krishna2017-pw}. When humans observe complex video sequences, they naturally employ a systematic cognitive process: first assessing the overall scene to estimate the number of concurrent activities, then focusing attention on specific temporal boundaries where events begin and end, and finally constructing coherent narratives that capture both individual events and their contextual relationships~\cite{wang2020event,long2021temporal}. This human-centric approach contrasts sharply with existing computational methods that rely heavily on exhaustive proposal generation followed by heuristic filtering mechanisms.
 
@@ -42,9 +56,9 @@ This human-inspired approach addresses fundamental limitations in existing dense
 \subsection{Overview} 
 \label{subsec:method_overview}
 
-\begin{figure*}[t]
+\begin{sidewaysfigure}
   \centering
-  \includegraphics[width=1\textwidth]{figures/sbs_design_overview.pdf}
+  \includegraphics{figures/sbs_design_overview.pdf}
   \caption{
     Overview of the Step-by-Step (SBS) framework for dense video captioning.
     (1) \textbf{Video encoder}: Extracts spatiotemporal features using C3D networks and encodes long-range temporal dependencies via transformer encoder.
@@ -55,7 +69,22 @@ This human-inspired approach addresses fundamental limitations in existing dense
     (6) \textbf{Sequential event captioner}: Generates natural language descriptions for each localized event using context-aware features.
   }
   \label{fig:method_overview}
-\end{figure*}
+\end{sidewaysfigure}
+
+% \begin{figure*}[t]
+%   \centering
+%   \includegraphics[width=1\textwidth]{figures/sbs_design_overview.pdf}
+%   \caption{
+%     Overview of the Step-by-Step (SBS) framework for dense video captioning.
+%     (1) \textbf{Video encoder}: Extracts spatiotemporal features using C3D networks and encodes long-range temporal dependencies via transformer encoder.
+%     (2) \textbf{Temporal event counter}: Explicitly estimates the number of events at each temporal location.
+%     (3) \textbf{Temporal boundary classifier}: Localizes event start and end boundaries along the timeline.
+%     (4) \textbf{Event proposal generation}: Generates event proposals from predicted counts and boundaries without relying on hand-crafted selection algorithms.
+%     (5) \textbf{Context-level event encoder}: Encodes sequences of event proposals to capture inter-event dependencies.
+%     (6) \textbf{Sequential event captioner}: Generates natural language descriptions for each localized event using context-aware features.
+%   }
+%   \label{fig:method_overview}
+% \end{figure*}
 
 The Step-by-Step (SBS) framework addresses the fundamental challenge of overlapping event detection in dense video captioning through a human-inspired progressive approach, as illustrated in Figure~\ref{fig:method_overview}. 
 Unlike conventional methods that rely on proposal-based architectures with non-maximum suppression (NMS)~\cite{Krishna2017-pw,Li2018-ll}, SBS explicitly models the number of events and their temporal boundaries to achieve more precise localization of overlapping events.
@@ -407,7 +436,7 @@ Second, the 1d actionness table approximately represents the number of scene tra
 In the first video, it is evident that the black event interval (where three events overlap) has the highest actionness.
 In the second video, we observe a pattern where actionness rapidly decreases whenever the scene changes and remains consistent when the scene is maintained.
 
-\begin{figure*}[t]
+\begin{figure}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/sbs_exp_qualitative}
   \caption{
@@ -417,7 +446,7 @@ In the second video, we observe a pattern where actionness rapidly decreases whe
     % (details are in Section \ref{subsec:method_temporal_event_counter}).
   }
   \label{fig:experiment_qualitative}
-\end{figure*}
+\end{figure}
 
 
 \begin{table}[t]
