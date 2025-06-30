@@ -74,7 +74,7 @@
 
 ### 5.4 Discussion
 
-## Chapter 6. Realistic Captioning via Unsupervised Pretraining and Adversarial Adaptation (ADVC)
+## Chapter 6. Realistic Captioning via Unsupervised Pretraining and Adversarial Adaptation
 
 ### 6.1 Nondeterminism Challenges in Dense Video Captioning
 
