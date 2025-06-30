@@ -446,6 +446,7 @@ Despite the less complex architecture, ADVC's results are impressive, underscori
     \label{fig:advc_qualitative}
 \end{sidewaysfigure}
 
+
 \subsection{Qualitative Results}
 In Figure~\ref{fig:advc_qualitative}, we present an illustrative example of dense video captioning outcomes for videos in the ActivityNet Captions validation set.
 This result clearly shows that ADVC performs localization and captioning similar to the ground-truth pattern.
@@ -480,10 +481,9 @@ We conduct a series of ablation studies to showcase the efficacy of unsupervised
 We undertake a performance comparison involving four ADVC variants, aiming to gauge the impact of unsupervised pretraining.
 These versions include: (\romannum{1}) no pretraining, (\romannum{2}) video-only pretraining, (\romannum{3}) language-only pretraining, and (\romannum{4}) full pretraining.
 We exclusively utilize the dataset of the downstream task for modules that are not pretrained.
+
 Table~\ref{tab:ablation_pretraining} demonstrates that ADVC yields substantial performance enhancements resulting from video and language pretraining. 
 Particularly, improvements emanating from language pretraining have a significant impact.
-
-Table~\ref{tab:ablation_pretraining} demonstrates that ADVC yields substantial performance enhancements resulting from video and language pretraining.
 The table clearly illustrates the remarkable improvements in performance metrics across different tasks.
 Specifically, the model with no pretraining shows the lowest scores, highlighting the challenges of starting from scratch.
 Introducing video-only pretraining significantly boosts performance, as evidenced by increases in the M, S, and F1 scores across both ActivityNet Captions and YouCook2 datasets.
@@ -521,18 +521,6 @@ The most significant gains are observed when both localization and caption adver
 The model achieves the highest scores across all metrics: 8.28 (M), 5.98 (S), and 61.85 (F1) for ActivityNet Captions, and 7.34 (M), 5.52 (S), and 29.33 (F1) for YouCook2.
 This underscores the complementary benefits of integrating both adversarial strategies, enhancing the model's ability to generalize and perform well across diverse tasks and datasets.
 
-\subsection{Effectiveness of Sentence Embedding}
-The ADVC captioning process involves two distinct steps: pretraining and latent vector generation.
-This process differs significantly from the traditional auto-regressive methods such as LSTMs or Transformers.
-While ADVC is effective for handling non-deterministic tasks, it necessitates a sufficiently dense and even latent space to adequately represent various videos.
-This section examines the embedding space of sentences not present in the training data to illustrate the expressive nature of the sentence embedding module and its coverage of diverse sentence types.
-We analyze the embedding vector values for all sentences in the ActivityNet Captions validation set using the sentence embedding module that was pre-trained on unlabeled text corpora.
-To enhance convenience, we employ the t-SNE algorithm to reduce the embedding vector from 768 dimensions to 2 dimensions.
-Figure~\ref{fig:latent_space} illustrates the embedding vector of all sentences at pretraining steps 0 and 10,000.
-Step 0 displays the outcomes of the initial pretrained TSDAE~\cite{Wang2022-um} model, while step 10000 exhibits the outcomes of the fine-tuned embedding module.
-The uneven distribution of embedding vectors is observed at step 0, despite the model being adequately trained on numerous sentences.
-A sufficiently fine-tuned embedding module suggests better generalization to a variety of representations with an even distribution of sentences.
-
 \begin{figure}
     \centering
     \subfloat[Step=0]{
@@ -548,3 +536,76 @@ A sufficiently fine-tuned embedding module suggests better generalization to a v
     To facilitate visualization, we employ the t-SNE algorithm to reduce the dimensionality of the embedding space $\in \mathbb{R}^{768}$ to two dimensions.}
     \label{fig:latent_space}
 \end{figure}
+
+\subsection{Effectiveness of Sentence Embedding}
+The ADVC captioning process involves two distinct steps: pretraining and latent vector generation.
+This process differs significantly from the traditional auto-regressive methods such as LSTMs or Transformers.
+While ADVC is effective for handling non-deterministic tasks, it necessitates a sufficiently dense and even latent space to adequately represent various videos.
+This section examines the embedding space of sentences not present in the training data to illustrate the expressive nature of the sentence embedding module and its coverage of diverse sentence types.
+We analyze the embedding vector values for all sentences in the ActivityNet Captions validation set using the sentence embedding module that was pre-trained on unlabeled text corpora.
+To enhance convenience, we employ the t-SNE algorithm to reduce the embedding vector from 768 dimensions to 2 dimensions.
+Figure~\ref{fig:latent_space} illustrates the embedding vector of all sentences at pretraining steps 0 and 10,000.
+Step 0 displays the outcomes of the initial pretrained TSDAE~\cite{Wang2022-um} model, while step 10000 exhibits the outcomes of the fine-tuned embedding module.
+The uneven distribution of embedding vectors is observed at step 0, despite the model being adequately trained on numerous sentences.
+A sufficiently fine-tuned embedding module suggests better generalization to a variety of representations with an even distribution of sentences.
+
+
+
+\section{Benefits of ADVC Approach}
+\label{sec:advc_benefits}
+
+The Adversarial Dense Video Captioning (ADVC) framework offers significant advantages over traditional deterministic approaches by explicitly modeling the inherent nondeterminism and subjectivity present in video interpretation tasks. This section systematically analyzes the key benefits of our proposed approach and demonstrates its practical implications for real-world dense video captioning applications.
+
+\subsection{Addressing Fundamental Limitations of Deterministic Methods}
+
+Traditional dense video captioning methods operate under the assumption of deterministic ground truth, where each video segment corresponds to a single correct interpretation and caption~\cite{Krishna2017-pw,Li2018-ll,Wang2018-ap}. This paradigm fundamentally conflicts with the subjective nature of human video interpretation, where multiple valid descriptions may exist for the same temporal segment~\cite{Summers2021-mz}. The ADVC framework addresses this limitation by treating video captioning as a distributional learning problem rather than a point estimation task.
+
+Unlike conventional approaches that penalize reasonable variations during training, ADVC embraces the multiplicity of valid interpretations through adversarial training mechanisms~\cite{Goodfellow2014-hs}. This design choice enables the model to generate diverse yet coherent captions that reflect the natural variability in human annotation patterns, as validated by the SODA evaluation framework~\cite{Fujita2020-ob} which assesses narrative coherence rather than token-level similarity.
+
+\subsection{Enhanced Robustness Through Distributional Learning}
+
+The adversarial training paradigm in ADVC provides enhanced robustness compared to deterministic methods by learning the underlying distribution of valid event-caption pairs rather than memorizing specific mappings~\cite{Arjovsky2017-qu,Gulrajani2017-dh}. This distributional approach offers several key advantages:
+
+\textbf{Improved Generalization:} By capturing the variability inherent in human annotations, ADVC demonstrates superior generalization to unseen video content and annotation styles. The model learns to generate contextually appropriate captions even when faced with ambiguous temporal boundaries or overlapping events that challenge traditional deterministic approaches~\cite{Duan2018-qf,Chen2021-sv}.
+
+\textbf{Reduced Overfitting:} The adversarial training mechanism acts as an implicit regularization technique, preventing the model from overfitting to specific annotation artifacts present in training datasets~\cite{Donahue2018-ez}. This regularization effect is particularly beneficial for dense video captioning, where annotation consistency across different annotators can vary significantly.
+
+\textbf{Handling Annotation Noise:} Real-world datasets often contain annotation inconsistencies and subjective interpretations that can mislead deterministic training procedures~\cite{Kandpal2023-ud}. ADVC's distributional learning approach naturally accommodates such noise by modeling the uncertainty in ground truth annotations rather than treating them as absolute references.
+
+\subsection{Scalable Learning Through Unsupervised Pretraining}
+
+The two-stage training paradigm of ADVC, consisting of unsupervised pretraining followed by adversarial adaptation, provides significant practical advantages for large-scale deployment:
+
+\textbf{Reduced Annotation Requirements:} The unsupervised pretraining stage leverages readily available video-text pairs without requiring precise temporal annotations~\cite{Miech2019-hk,Huang2020-as}. This capability substantially reduces the annotation burden associated with dense video captioning datasets while maintaining competitive performance.
+
+\textbf{Domain Adaptation:} The pretraining approach enables effective domain transfer across different video types and annotation styles. Models pretrained on large-scale datasets such as WebVid~\cite{Bain2021-si} or WikiHow~\cite{Koupaee2018-et} can be efficiently adapted to specific domains through adversarial fine-tuning without requiring extensive domain-specific annotations.
+
+\textbf{Computational Efficiency:} The staged training approach allows for efficient resource utilization by separating representation learning from task-specific adaptation. The unsupervised pretraining stage can leverage large-scale computational resources once, while the adversarial adaptation stage requires minimal computational overhead for domain-specific deployment.
+
+\subsection{Improved Evaluation Metrics and Human Alignment}
+
+ADVC's emphasis on distributional learning aligns naturally with evaluation metrics that assess caption quality beyond token-level similarity. The framework demonstrates particular strength when evaluated using narrative coherence metrics such as SODA~\cite{Fujita2020-ob}, which better reflect human judgment of caption quality compared to traditional metrics like BLEU~\cite{Papineni2002-sn} or METEOR~\cite{Banerjee2005-zo}.
+
+The generated captions exhibit improved semantic diversity while maintaining factual accuracy, addressing a common limitation of deterministic methods that tend to produce repetitive or generic descriptions~\cite{Wang2019-tk,wang2019describing}. This improvement is particularly valuable for applications requiring rich and detailed video descriptions, such as accessibility tools for visually impaired users or content indexing systems.
+
+\subsection{Practical Applications and Real-World Impact}
+
+The benefits of ADVC extend beyond academic benchmarks to practical applications where robustness and adaptability are crucial:
+
+\textbf{Content Moderation:} The framework's ability to generate diverse interpretations of video content can enhance automated content moderation systems by identifying potentially problematic content that might be missed by deterministic approaches focused on single interpretations.
+
+\textbf{Educational Technology:} In educational video analysis, ADVC's capability to generate multiple valid descriptions can support personalized learning experiences by adapting explanations to different cognitive styles and comprehension levels.
+
+\textbf{Multimedia Accessibility:} The generation of diverse yet coherent captions can improve accessibility tools by providing users with multiple descriptive options that best suit their preferences and contextual needs.
+
+\subsection{Limitations and Future Directions}
+
+While ADVC offers significant advantages, certain limitations merit consideration for future development:
+
+\textbf{Computational Overhead:} The adversarial training process requires more computational resources compared to standard supervised learning approaches. Future work should explore efficient training strategies that maintain the benefits of distributional learning while reducing computational costs.
+
+\textbf{Evaluation Challenges:} Assessing the quality of diverse outputs remains challenging with existing evaluation metrics. Development of new evaluation frameworks that capture both diversity and accuracy will be essential for advancing the field.
+
+\textbf{Controllability:} While diversity in generated captions is generally beneficial, certain applications may require more controllable generation processes. Future research should investigate methods to balance diversity with controllability based on application requirements.
+
+The ADVC framework represents a significant step toward more realistic and human-aligned dense video captioning systems. By embracing the inherent subjectivity and nondeterminism in video interpretation, ADVC opens new possibilities for robust and adaptable video understanding technologies that better serve real-world applications and user needs.
